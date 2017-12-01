@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "WebJobs.Script.K8Host": {
+      "commandName": "Project",
+      "commandLineArgs": "C:\\temp\\funcsamples"
+    }
+  }
+}
