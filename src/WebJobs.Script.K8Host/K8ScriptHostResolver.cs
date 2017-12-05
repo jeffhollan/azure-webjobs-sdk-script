@@ -4,7 +4,7 @@ using System.Text;
 
 namespace WebJobs.Script.K8Host
 {
-    class ScriptHostService
+    class K8ScriptHostResolver
     {
     }
 }

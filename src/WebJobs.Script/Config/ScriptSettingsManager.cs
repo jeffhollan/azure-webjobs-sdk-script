@@ -81,6 +81,7 @@ namespace Microsoft.Azure.WebJobs.Script.Config
             get => GetSettingFromCache(EnvironmentSettingNames.AppInsightsInstrumentationKey);
             set => UpdateSettingInCache(EnvironmentSettingNames.AppInsightsInstrumentationKey, value);
         }
+        public string WebSiteHostName { get; set; }
 
         public void SetConfigurationFactory(Func<IConfiguration> configurationRootFactory)
         {

@@ -16,7 +16,8 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
             return UseWebJobsScriptHost(builder, applicationLifetime, null);
         }
 
-        public static IApplicationBuilder UseWebJobsScriptHost(this IApplicationBuilder builder, IApplicationLifetime applicationLifetime, Action<WebJobsRouteBuilder> routes)
+        public static IApplicationBuilder UseWebJobsScriptHost(this IApplicationBuilder builder,
+            IApplicationLifetime applicationLifetime, Action<WebJobsRouteBuilder> routes)
         {
             builder.UseMiddleware<FunctionInvocationMiddleware>();
             builder.UseWhen(context => !context.Request.Path.StartsWithSegments("/admin/host/status"), config =>

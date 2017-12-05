@@ -23,8 +23,12 @@ namespace WebJobs.Script.K8Host
 {
     public class K8ScriptHostManager : ScriptHostManager
     {
-        private ScriptHostConfiguration _config;
-        private IWebJobsRouter _router;
+        private readonly ScriptHostConfiguration _config;
+        private readonly IWebJobsRouter _router;
+        private readonly IMetricsLogger _metricsLogger;
+        private readonly IWebHookProvider _bindingWebHookProvider;
+        private readonly IWebJobsExceptionHandler _exceptionHandler;
+        private readonly ILoggerFactory _loggerFactory;
 
         private Task _runTask;
         private int _isRunning = 0;
@@ -40,13 +44,16 @@ namespace WebJobs.Script.K8Host
             this._router = router;
 
             // Create a metrics logger
+            _loggerFactory = _config.HostConfig.LoggerFactory;
+            _metricsLogger = new K8MetricsLogger(_loggerFactory.CreateLogger("Metrics.ScriptHost"));
 
-
+            _bindingWebHookProvider = new K8WebHookProvider();
+            _exceptionHandler = new K8ScriptHostExceptionHandler(this);
         }
         
         public Task RunAsync(CancellationToken cancellationToken)
         {
-            if (Interlocked.CompareExchange(ref _isRunning, 0, 1) == 1)
+            if (Interlocked.CompareExchange(ref _isRunning, 0, 1) == 0)
             {
                 _runTask = Task.Factory.StartNew(
                     () => RunAndBlock(cancellationToken),
@@ -111,17 +118,17 @@ namespace WebJobs.Script.K8Host
             // is created on each restart.
 
             // Add the host specific services
-            config.HostConfig.AddService<IMetricsLogger>(null);
-            config.HostConfig.AddService<IWebHookProvider>(null);
-            config.HostConfig.AddService<IWebJobsExceptionHandler>(null);
+            config.HostConfig.AddService<IMetricsLogger>(_metricsLogger);
+            config.HostConfig.AddService<IWebHookProvider>(_bindingWebHookProvider);
+            config.HostConfig.AddService<IWebJobsExceptionHandler>(_exceptionHandler);
 
             // Set the host ID (in a K8 scenario, this will be the pod id)
-            var hostId = "TODO";            
-            var functionLogger = (ILogger)null;
+            var hostId = config.HostConfig.HostId ?? "default";
+            var functionLogger = _loggerFactory.CreateLogger("Function.Logger");
 
             var instanceLogger = new K8FunctionInstanceLogger(
                 (name) => this.Instance.GetFunctionOrNull(name),
-                (IMetricsLogger)null, (ILogger)null, hostId);
+                (IMetricsLogger)_metricsLogger, (ILogger)functionLogger, hostId);
             config.HostConfig.AddService<IAsyncCollector<FunctionInstanceLogEntry>>(instanceLogger);
 
             // Disable standard dashboard logging; enable custom container logging
@@ -132,7 +139,7 @@ namespace WebJobs.Script.K8Host
         protected override void OnHostStarted()
         {         
             // Activate the readiness check
-            // TODO 
+            // masimms TODO 
 
             base.OnHostStarted();
         }
@@ -188,6 +195,7 @@ namespace WebJobs.Script.K8Host
             {
                 _router.AddFunctionRoute(routeBuilder.Build());
             }
+            
         }
     }
 }

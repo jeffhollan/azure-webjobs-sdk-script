@@ -12,13 +12,13 @@
       "commandName": "IISExpress",
       "launchBrowser": true,
       "environmentVariables": {
+        "AzureWebJobsScriptRoot": "c:\\temp\\funcsamples\\",
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "WebJobs.Script.WebHost.Core": {
       "commandName": "Project",
       "launchBrowser": true,
-      "launchUrl": "",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },

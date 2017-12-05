@@ -1,0 +1,39 @@
+apiVersion: extensions/v1beta1
+kind: "DaemonSet"
+metadata:
+  labels:
+    app: functions-worker-host
+  name: functions-worker-host
+spec:
+  template:
+    metadata:
+      labels:
+        app: functions-worker-host
+    spec:
+      containers:
+        - name: functions-worker-host
+          image: mabsimms/k8host:latest
+          volumeMounts:
+          - name: config-volume
+            mountPath: /config
+          #- name: scripts-local-volume
+          #  mountPath: /scripts
+          - name: scripts-azurefiles-volume
+            mountPath: /scripts
+          - name: logs-volume
+            mountPath: /logs      
+          env:
+          - name: FUNCTIONS_K8CONFIG
+            value: '/config/appsettings.json'
+      volumes:
+      - name: config-volume
+        configMap:
+          name: functions-config             
+      - name: logs-volume
+        emptyDir: {}
+      - name: scripts-local-volume
+        emptyDir: {}
+      - name: scripts-azurefiles-volume
+        azureFile:
+          secretName: script-azure-file
+          shareName:  scriptshare

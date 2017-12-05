@@ -15,29 +15,37 @@ namespace WebJobs.Script.K8Host
     {
         public static void Main(string[] args)
         {
-            RunAsync(args).GetAwaiter().GetResult();
-
-            if (args == null)
+            try
             {
-                throw new ArgumentNullException("args");
+                RunAsync(args).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.ToString());
+                Console.ReadLine();
             }
 
-            string rootPath = Environment.CurrentDirectory;
-            if (args.Length > 0)
-            {                
-                rootPath = (string)args[0];
-            }
-            Console.WriteLine("Using root path {0}", rootPath);
+            //if (args == null)
+            //{
+            //    throw new ArgumentNullException("args");
+            //}
 
-            var config = new ScriptHostConfiguration()
-            {
-                RootScriptPath = rootPath,
-                IsSelfHost = true
-            };
+            //string rootPath = Environment.CurrentDirectory;
+            //if (args.Length > 0)
+            //{                
+            //    rootPath = (string)args[0];
+            //}
+            //Console.WriteLine("Using root path {0}", rootPath);
 
-            // Override the logger factory to be cleaner for stdout output (container output)
-            var scriptHostManager = new ScriptHostManager(config,
-                loggerFactoryBuilder: new LoggerFactoryBuilder() );
+            //var config = new ScriptHostConfiguration()
+            //{
+            //    RootScriptPath = rootPath,
+            //    IsSelfHost = true
+            //};
+
+            //// Override the logger factory to be cleaner for stdout output (container output)
+            //var scriptHostManager = new ScriptHostManager(config,
+            //    loggerFactoryBuilder: new LoggerFactoryBuilder() );
             //scriptHostManager.RunAndBlock();
 
 
@@ -79,7 +87,7 @@ namespace WebJobs.Script.K8Host
                 })
                 .UseStartup<Startup>()
                 .Build();
-
+            
             await webhost.RunAsync(_applicationCts.Token);            
         }
 
