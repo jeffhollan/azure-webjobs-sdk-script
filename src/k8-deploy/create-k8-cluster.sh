@@ -1,17 +1,7 @@
 #!/bin/bash
 
-export RESOURCE_GROUP=masfuncexplore-rg
-export LOCATION=westus2
-
 export CLUSTER_NAME=funcexpk8
-export REGISTRY_NAME=funcexpk8reg
-export REGISTRY_LOGINSERVER=funcexpk8reg.azurecr.io
 export DNS_PREFIX=funcexpk8
-export VNET_NAME=funcexpk8-vnet
-export VNET_PREFIXES=10.1.0.0/16
-export VNET_MASTER_PREFIX=10.1.0.0/24
-export VNET_AGENT_PREFIX=10.1.1.0/24
-export KEYVAULT_NAME=funcexpk8-kv
 export AGENT_VM_SIZE=Standard_DS4_v2
 export AGENT_COUNT=3
 
@@ -56,7 +46,7 @@ az acr create --resource-group $RESOURCE_GROUP \
 # TODO - auth the acr to the cluster below
 
 echo "Creating k8 cluster"
-echo az acs create --orchestrator-type=kubernetes \
+az acs create --orchestrator-type=kubernetes \
     --resource-group $RESOURCE_GROUP \
     --dns-prefix $DNS_PREFIX \
     --name $CLUSTER_NAME \
@@ -67,11 +57,24 @@ echo az acs create --orchestrator-type=kubernetes \
     --agent-osdisk-size 512 \
     --dns-prefix $DNS_PREFIX \
     --master-count 3 \
-    --master-vm-size Standard_DS1_v2 \
+    --master-vm-size Standard_D2_v2 \
     --master-storage-profile ManagedDisks \
     --master-vnet-subnet-id $masterSubnetId \
+    --master-first-consecutive-static-ip 10.1.0.5 \
     --orchestrator-version 1.8.1 \
-    --ssh-key-value "$SSH_KEYDATA"  
+    --generate-ssh-keys
+
+   #\ --ssh-key-value "$SSH_KEYDATA"  
+
+az acs kubernetes get-credentials --resource-group=$RESOURCE_GROUP --name=$CLUSTER_NAME
+
+echo "Registering ACR registry to k8"
+echo "TODO"
+
+echo "Tagging agent node as monitoring"
+echo "TODO"
+
+echo "Deploying system services"
 
   #--generate-ssh-key
 #                     [--service-principal SERVICE_PRINCIPAL] [--windows]
