@@ -3,28 +3,19 @@
 echo "Loading shared variables"
 source ./variables-shared.sh
 
-# Create a jumpbox on a separate VNET
-echo "Creating overall resource group"
-az group create --name ${RESOURCE_GROUP} \
-    --location ${LOCATION_NAME}
-
 echo "Creating enclosing resource group"
 az group create --name $RESOURCE_GROUP --location $LOCATION
 
 echo "Creating virtual network and subnets"
 az network vnet create --resource-group ${RESOURCE_GROUP} \
-    --name ${VNET_NAME} --address-prefixes ${VNET_PREFIXES} 
+    --name ${MON_VNET_NAME} --address-prefixes ${MON_VNET_PREFIXES} 
 
 az network vnet subnet create --resource-group ${RESOURCE_GROUP} \
-    --vnet-name ${VNET_NAME} --name shared-subnet --address-prefix $VNET_SHARED_PREFIX
-az network vnet subnet create --resource-group ${RESOURCE_GROUP} \
-    --vnet-name ${VNET_NAME} --name master-subnet --address-prefix $VNET_MASTER_PREFIX
-az network vnet subnet create --resource-group ${RESOURCE_GROUP} \
-    --vnet-name ${VNET_NAME} --name agent-subnet --address-prefix $VNET_AGENT_PREFIX
+    --vnet-name ${MON_VNET_NAME} --name mgmt-subnet --address-prefix $MON_VNET_MASTER_PREFIX
 
 # Create a key vault
 az keyvault create --resource-group ${RESOURCE_GROUP} \
-    --location ${LOCATION_NAME} --sku standard \
+    --location ${LOCATION} --sku standard \
     --name ${KEYVAULT_NAME}
 
 # Create and store the ssh keys
@@ -43,11 +34,25 @@ SSH_KEYDATA=`cat ~/.ssh/funcexpl.pub`
 
 # Create the monitoring VM
 az vm create --resource-group ${RESOURCE_GROUP} --name ${MONVM_NAME} \
-    --admin-username ${USERNAME} --ssh-key-value "${SSH_KEYDATA}" \
+    --admin-username ${USERNAME} \
     --authentication-type ssh \
-    --size ${VM_SIZE} --image ${VM_IMAGE} \
-    --storage-sku Premium_LRS --location ${LOCATION_NAME} \
-    --vnet-name ${VNET_NAME} \
-    --subnet shared-subnet \
-    --private-ip-address $MONVM_IP
+    --image $MONVM_IMAGE \
+    --size ${VM_SIZE} \
+    --storage-sku Premium_LRS --location ${LOCATION} \
+    --vnet-name ${MON_VNET_NAME} \
+    --subnet mgmt-subnet \
+    --private-ip-address $MONVM_IP \
+    --custom-data monserver-cloud-init.txt \
+    --data-disk-sizes-gb 1024 \
+    --ssh-key-value "${SSH_KEYDATA}"
 
+# Tunnel open the monitoring ports (TEMP)
+
+
+# Create the container registry
+echo "Creating container registry"
+# az acr login --name $REGISTRY_NAME
+# TODO - auth the acr to the cluster below
+
+az acr create --resource-group $RESOURCE_GROUP \
+    --name $REGISTRY_NAME --sku Basic --admin-enabled true

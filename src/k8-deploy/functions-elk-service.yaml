@@ -1,0 +1,46 @@
+apiVersion: extensions/v1beta1
+kind: "ReplicaSet"
+metadata:
+  labels:
+    app: elk
+  name: elk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elk
+  template:
+    metadata:
+      labels:
+        app: elk
+    spec:
+      containers:
+        - name: elk
+          image: sebp/elk
+          resources:
+            requests:
+              memory: 4Gi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9200
+            initialDelaySeconds: 45
+            timeoutSeconds: 2
+          volumeMounts:
+          - name: data-volume
+            mountPath: /var/lib/elasticsearch          
+          #env:          
+          ports:
+          - containerPort: 5601
+            name: kibana
+            protocol: TCP
+          - containerPort: 9200
+            name: elasticsearch
+            protocol: TCP
+          - containerPort: 5044
+            name: logstash
+            protocol: TCP
+      volumes:         
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: elk
