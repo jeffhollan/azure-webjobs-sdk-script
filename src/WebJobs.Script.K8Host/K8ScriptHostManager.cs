@@ -37,8 +37,10 @@ namespace WebJobs.Script.K8Host
             ScriptHostConfiguration config,
             ScriptSettingsManager settingsManager,
             IWebJobsRouter router,
-            IScriptHostFactory scriptHostFactory = null)
-                : base(config, settingsManager, scriptHostFactory)
+            IScriptHostFactory scriptHostFactory = null, 
+            ILoggerFactoryBuilder loggerFactoryBuilder = null)
+                : base(config, settingsManager, scriptHostFactory, 
+                      loggerFactoryBuilder: loggerFactoryBuilder)
         {
             this._config = config;
             this._router = router;

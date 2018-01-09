@@ -234,7 +234,13 @@ namespace Microsoft.Azure.WebJobs.Script
                     // then restart the host
                     string message = "A ScriptHost error has occurred";
                     _traceWriter?.Error(message, ex);
-                    _logger?.LogError(0, ex, message);
+
+                    if (_logger == null)
+                        Console.WriteLine("Error in host startup: " + ex.ToFormattedString());
+                    else
+                        _logger.LogError(0, ex, message);
+
+
 
                     // If a ScriptHost instance was created before the exception was thrown
                     // Orphan and cleanup that instance.

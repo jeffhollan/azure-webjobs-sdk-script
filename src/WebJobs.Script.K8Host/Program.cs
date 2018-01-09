@@ -4,6 +4,7 @@ using Microsoft.Azure.WebJobs.Script.Config;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using Serilog.Formatting.Compact;
 using System;
 using System.IO;
 using System.Threading;
@@ -24,36 +25,11 @@ namespace WebJobs.Script.K8Host
                 Console.WriteLine(ex.ToString());
                 Console.ReadLine();
             }
-
-            //if (args == null)
-            //{
-            //    throw new ArgumentNullException("args");
-            //}
-
-            //string rootPath = Environment.CurrentDirectory;
-            //if (args.Length > 0)
-            //{                
-            //    rootPath = (string)args[0];
-            //}
-            //Console.WriteLine("Using root path {0}", rootPath);
-
-            //var config = new ScriptHostConfiguration()
-            //{
-            //    RootScriptPath = rootPath,
-            //    IsSelfHost = true
-            //};
-
-            //// Override the logger factory to be cleaner for stdout output (container output)
-            //var scriptHostManager = new ScriptHostManager(config,
-            //    loggerFactoryBuilder: new LoggerFactoryBuilder() );
-            //scriptHostManager.RunAndBlock();
-
-
         }
 
         private static CancellationTokenSource _applicationCts 
             = new CancellationTokenSource();
-
+        
         private static async Task RunAsync(string[] args)
         {
             var webhost = new WebHostBuilder()
@@ -72,13 +48,8 @@ namespace WebJobs.Script.K8Host
                 })
                 .ConfigureLogging( (hostingContext, loggerFactory) =>
                 {
-                    var logger = new LoggerConfiguration()
-                        // TODO - pull from configuration
-                        //.ReadFrom.Configuration(IConfiguration)
-                        .WriteTo.Console()
-                        .CreateLogger();
-                    Log.Logger = logger;
-
+                    var loggerConfig = GetLoggerConfiguration(hostingContext);
+                    Log.Logger = loggerConfig.CreateLogger();
                     loggerFactory.AddSerilog();
                 })
                 .UseDefaultServiceProvider( (context, options) =>
@@ -95,20 +66,47 @@ namespace WebJobs.Script.K8Host
         {
             _applicationCts.Cancel();
         }
-    }
 
-    public class LoggerFactoryBuilder : ILoggerFactoryBuilder
-    {
-        public void AddLoggerProviders(ILoggerFactory factory, 
-            ScriptHostConfiguration scriptConfig, 
-            ScriptSettingsManager settingsManager)
+        internal static LoggerConfiguration GetLoggerConfiguration(
+            WebHostBuilderContext context)
         {
-            var logger = new LoggerConfiguration()
-            //.ReadFrom.Configuration(IConfiguration)
-                .WriteTo.Console()
-                .CreateLogger();
-            Log.Logger = logger;
-            factory.AddSerilog();
+            var loggerConfig = new LoggerConfiguration();
+
+            // Add the relevant enrichment fields and properties; these environment properties must be 
+            // set in the container orchestration definition 
+            loggerConfig.Enrich.WithProperty("function.container", Environment.GetEnvironmentVariable("FUNCTION_POD_NAME"));
+            loggerConfig.Enrich.WithProperty("function.node", Environment.GetEnvironmentVariable("FUNCTION_NODE_NAME"));
+            loggerConfig.Enrich.WithProperty("function.namespace", Environment.GetEnvironmentVariable("FUNCTION_NAMESPACE_NAME"));
+            loggerConfig.Enrich.WithProperty("function.container_ip", Environment.GetEnvironmentVariable("FUNCTION_POD_IP"));
+            loggerConfig.Enrich.WithProperty("function.deployment", Environment.GetEnvironmentVariable("FUNCTION_DEPLOYMENT"));
+
+            loggerConfig.Enrich.With<TimespanFormatter>();
+
+            var serilogSection = context.Configuration.GetSection("Serilog");
+            if (serilogSection != null && serilogSection.Value != null)
+            {
+                Console.WriteLine("Loading serilog configuration from master config");
+                loggerConfig = loggerConfig.ReadFrom.Configuration(context.Configuration);
+                return loggerConfig;
+            }
+
+            var serilogConfigFile = Environment.GetEnvironmentVariable("FUNCTIONS_LOGGING_CONFIG");
+            if (!String.IsNullOrEmpty(serilogConfigFile) && File.Exists(serilogConfigFile))
+            {
+                Console.WriteLine("Loading serilog configuration from FUNCTIONS_LOGGING_CONFIG file {0}", serilogConfigFile);
+                var config = new ConfigurationBuilder()
+                    .AddJsonFile(serilogConfigFile)
+                    .Build();
+                loggerConfig = loggerConfig.ReadFrom.Configuration(config);
+                return loggerConfig;
+            }
+
+            // Otherwise hard code the configuration for JSON output
+            loggerConfig = loggerConfig.WriteTo.Console(new FluentDJsonFormatter(), 
+                restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Verbose);
+            
+            return loggerConfig;
         }
     }
+     
 }

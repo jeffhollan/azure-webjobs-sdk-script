@@ -1,0 +1,16 @@
+{
+    "bindings": [
+        {
+            "type": "httpTrigger",
+            "name": "payload",
+            "direction": "in",
+            "webHookType": "genericJson",
+            "route": "hooks/csharp/generic/{action}"
+        },
+        {
+            "type": "http",
+            "name": "res",
+            "direction": "out"
+        }
+    ]
+}

@@ -1,5 +1,5 @@
-apiVersion: extensions/v1beta1
-kind: "DaemonSet"
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   labels:
     app: functions-worker-host
@@ -10,30 +10,61 @@ spec:
       labels:
         app: functions-worker-host
     spec:
-      containers:
-        - name: functions-worker-host
-          image: mabsimms/k8host:latest
-          volumeMounts:
+      replicas: 1
+      selector:
+        matchLabels: functions-worker-host
+      template:
+        metadata:
+          labels: functions-worker-host
+        spec:
+          containers:
+            - name: functions-worker-host
+              image: mabsimms/k8host:latest
+              volumeMounts:
+              - name: config-volume
+                mountPath: /config
+              #- name: scripts-local-volume
+              #  mountPath: /scripts
+              - name: scripts-azurefiles-volume
+                mountPath: /scripts
+              - name: logs-volume
+                mountPath: /logs      
+              env:
+              # Set the internal logging labels and annotations.  Use this to identify the
+              # version and configuration 
+              - name: FUNCTION_DEPLOYMENT
+                value: "TODO"
+
+              # Map in the configuration file
+              - name: FUNCTIONS_K8CONFIG
+                value: '/config/appsettings.json'
+
+              # Project K8 context into the container
+              - name: FUNCTION_POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              - name: FUNCTION_NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+              - name: FUNCTION_NAMESPACE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+              - name: FUNCTION_POD_IP
+                valueFrom:
+                  fieldRef:
+                    fieldPath: status.podIP
+          volumes:
           - name: config-volume
-            mountPath: /config
-          #- name: scripts-local-volume
-          #  mountPath: /scripts
-          - name: scripts-azurefiles-volume
-            mountPath: /scripts
+            configMap:
+              name: functions-config             
           - name: logs-volume
-            mountPath: /logs      
-          env:
-          - name: FUNCTIONS_K8CONFIG
-            value: '/config/appsettings.json'
-      volumes:
-      - name: config-volume
-        configMap:
-          name: functions-config             
-      - name: logs-volume
-        emptyDir: {}
-      - name: scripts-local-volume
-        emptyDir: {}
-      - name: scripts-azurefiles-volume
-        azureFile:
-          secretName: script-azure-file
-          shareName:  scriptshare
+            emptyDir: {}
+          - name: scripts-local-volume
+            emptyDir: {}
+          - name: scripts-azurefiles-volume
+            azureFile:
+              secretName: script-azure-file
+              shareName:  scriptshare

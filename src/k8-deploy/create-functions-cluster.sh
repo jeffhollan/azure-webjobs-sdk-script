@@ -74,7 +74,7 @@ deploy_monitoring_vm() {
         --size $MGMT_VM_SIZE \
         --storage-sku Premium_LRS \
         --public-ip-address-dns-name $MGMT_DNS_NAME \
-        --custom-data monserver-cloud-init.txt \
+        --custom-data supporting/monserver-cloud-init.txt \
         --data-disk-sizes-gb 1024
 
     # Allow access to monitoring ports

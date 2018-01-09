@@ -90,7 +90,8 @@ namespace WebJobs.Script.K8Host
                     config: _scriptHostConfig,
                     settingsManager: _settingsManager,
                     router: _router,
-                    scriptHostFactory: null);
+                    scriptHostFactory: null,
+                    loggerFactoryBuilder: new K8LoggerFactoryBuilder());
             }, reuse: Reuse.Singleton);
 
             // container.Register<K8ScriptHostManager>();
