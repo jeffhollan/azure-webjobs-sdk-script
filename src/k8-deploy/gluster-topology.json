@@ -1,0 +1,60 @@
+{
+    "clusters": [
+      {
+        "nodes": [
+          {
+            "node": {
+              "hostnames": {
+                "manage": [
+                  "node0"
+                ],
+                "storage": [
+                  "%NODE0_IP%"
+                ]
+              },
+              "zone": 1
+            },
+            "devices": [
+              "/dev/sdc",
+              "/dev/sdd"
+            ]
+          },
+          {
+            "node": {
+              "hostnames": {
+                "manage": [
+                  "node1"
+                ],
+                "storage": [
+                  "%NODE1_IP%"
+                ]
+              },
+              "zone": 1
+            },
+            "devices": [
+                "/dev/sdc",
+                "/dev/sdd"
+            ]
+          },
+          {
+            "node": {
+              "hostnames": {
+                "manage": [
+                  "node2"
+                ],
+                "storage": [
+                    "%NODE2_IP%"
+                ]
+              },
+              "zone": 1
+            },
+            "devices": [
+                "/dev/sdc",
+                "/dev/sdd"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

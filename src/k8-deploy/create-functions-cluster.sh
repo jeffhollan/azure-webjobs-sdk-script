@@ -256,7 +256,7 @@ deploy_acs_engine_k8() {
     scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox.pub \
         $MGMT_USERNAME@$master_fqdn:.kube/config .
     export KUBECONFIG=`pwd`/config
-    cp $KUBECONFIG ~/.kube/config
+    cp $KUBECONFIG ~/.kube/config    
 }
 
 configure_k8() { 
@@ -272,6 +272,26 @@ configure_k8() {
 
     # Deploy heapster for logging to influxdb
     kubectl apply -f heapster-to-influx.yaml
+}
+
+configure_glusterfs() {
+    ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox.pub \
+        $MGMT_USERNAME@$master_fqdn
+
+    # Execute the glusterfs-client install script on each gluster agent node
+    # sudo apt install glusterfs-client
+    NODES=($(kubectl get nodes --selector=functions-role=worker -o jsonpath='{.items[*].metadata.name}'))
+    for node in "${NODES[@]}"
+    do
+        echo "Installing glusterfs on $node"
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
+            -o ProxyCommand="ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox -W %h:%p ${MGMT_USERNAME}@${master_fqdn}" \
+            -l ${MGMT_USERNAME} ${node} \
+            sudo apt-get install -Y glusterfs-client
+    done
+
+ 
+
 }
 
 create_shared_resources()

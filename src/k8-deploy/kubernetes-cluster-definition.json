@@ -19,6 +19,9 @@
           "count": 3,
           "vmSize": "%K8_NODE_SIZE%",
           "availabilityProfile": "AvailabilitySet",
+          "OSDiskSizeGB": 512,
+          "storageProfile" : "ManagedDisks",
+          "diskSizesGB": [1023, 1023],
           "vnetSubnetId": "%K8_VNET_SUBNET_AGENT%",
           "customNodeLabels": {
             "functions-role": "diskhost",
@@ -31,8 +34,7 @@
             "vmSize": "%K8_NODE_SIZE%",
             "availabilityProfile": "AvailabilitySet",
             "OSDiskSizeGB": 512,
-            "storageProfile" : "ManagedDisks",
-            "diskSizesGB": [1023, 1023],
+            "storageProfile" : "ManagedDisks",            
             "vnetSubnetId": "%K8_VNET_SUBNET_AGENT%",
             "customNodeLabels": {
                 "functions-role": "worker",
