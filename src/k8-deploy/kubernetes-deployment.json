@@ -19,6 +19,9 @@
           "count": 3,
           "vmSize": "Standard_DS4_v2",
           "availabilityProfile": "AvailabilitySet",
+          "OSDiskSizeGB": 512,
+          "storageProfile" : "ManagedDisks",
+          "diskSizesGB": [1023, 1023],
           "vnetSubnetId": "/subscriptions/3e9c25fc-55b3-4837-9bba-02b6eb204331/resourceGroups/mask8test-rg/providers/Microsoft.Network/virtualNetworks/funcexprk8-vnet/subnets/k8agent-subnet",
           "customNodeLabels": {
             "functions-role": "diskhost",
@@ -31,11 +34,11 @@
             "vmSize": "Standard_DS4_v2",
             "availabilityProfile": "AvailabilitySet",
             "OSDiskSizeGB": 512,
-            "storageProfile" : "ManagedDisks",
-            "diskSizesGB": [1023, 1023],
+            "storageProfile" : "ManagedDisks",            
             "vnetSubnetId": "/subscriptions/3e9c25fc-55b3-4837-9bba-02b6eb204331/resourceGroups/mask8test-rg/providers/Microsoft.Network/virtualNetworks/funcexprk8-vnet/subnets/k8agent-subnet",
             "customNodeLabels": {
-                "functions-role": "worker"            
+                "functions-role": "worker",
+                "beta.kubernetes.io/fluentd-ds-ready" : "true"
               }
           }       
       ],
@@ -54,8 +57,8 @@
         "adminPassword": "naengeiSuuroor0e"
       },
       "servicePrincipalProfile": {
-        "clientId": "4a8fa02c-4843-4e8e-b2ae-fda62cccc35d",
-        "secret": "84c52e3e-b1d8-411e-9efa-7c69aa766451"
+        "clientId": "39446c44-fd6b-48ac-ae7f-6c5baff2601b",
+        "secret": "3a371b25-d48f-42f7-8dd2-f939d19ff963"
       }
     }
   }

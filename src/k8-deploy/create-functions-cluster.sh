@@ -100,42 +100,54 @@ deploy_shared() {
     export subid=$(az account show --query id | tr -d '"')
     az ad sp create-for-rbac --role="Contributor" \
         --scopes="/subscriptions/$subid/resourceGroups/$RESOURCE_GROUP" > adrole.json
+
+    unset spid
+    unset sppw
+
     export spid=$(cat adrole.json | jq .appId | tr -d '"')
     export sppw=$(cat adrole.json | jq .password | tr -d '"')
     echo "Service principal app id = $spid"
+    az keyvault secret set --vault-name ${KEYVAULT_NAME} \
+        --name rbac-role --file adrole.json
 
     # Create the container registry
-    echo "Creating container registry"
+    #echo "Creating container registry"
 
     # TODO - auth the acr to the cluster below
-    az acr create --resource-group $RESOURCE_GROUP \
-        --name $REGISTRY_NAME --sku Basic --admin-enabled true
-    registryId=$(az acr show --resource-group $RESOURCE_GROUP --name $REGISTRY_NAME \
-        --query id --output tsv)    
-     az role assignment create --scope $registryId \
-         --role Owner --assignee $spid
-
+    # az acr create --resource-group $RESOURCE_GROUP \
+    #     --name $REGISTRY_NAME --sku Basic --admin-enabled true
+    # registryId=$(az acr show --resource-group $RESOURCE_GROUP --name $REGISTRY_NAME \
+    #     --query id --output tsv)    
+    #  az role assignment create --scope $registryId \
+    #      --role Owner --assignee $spid
 }
 
 
 deploy_monitoring_vm() {
     # Create the monitoring VM
-    az vm create --resource-group $RESOURCE_GROUP --name $MGMT_VM_NAME \
-        --location $LOCATION --image $MGMT_VM_IMAGE \
-        --admin-username $MGMT_USERNAME --ssh-key-value "${SSH_KEYDATA}" \
-        --authentication-type ssh \
-        --size $MGMT_VM_SIZE \
-        --storage-sku Premium_LRS \
-        --public-ip-address-dns-name $MGMT_DNS_NAME \
-        --custom-data supporting/monserver-cloud-init.txt \
-        --vnet-name $K8_VNET_NAME --subnet $K8_VNET_SUBNET_MGMT_NAME \
-        --private-ip-address $K8_VNET_SUBNET_MGMT_VMIP \
-        --data-disk-sizes-gb 1024
+    if [ -e supporting/monserver-cloud-init.txt ]; then
+        az vm create --resource-group $RESOURCE_GROUP --name $MGMT_VM_NAME \
+            --location $LOCATION --image $MGMT_VM_IMAGE \
+            --admin-username $MGMT_USERNAME --ssh-key-value "${SSH_KEYDATA}" \
+            --authentication-type ssh \
+            --size $MGMT_VM_SIZE \
+            --storage-sku Premium_LRS \
+            --public-ip-address-dns-name $MGMT_DNS_NAME \
+            --custom-data supporting/monserver-cloud-init.txt \
+            --vnet-name $K8_VNET_NAME --subnet $K8_VNET_SUBNET_MGMT_NAME \
+            --private-ip-address $K8_VNET_SUBNET_MGMT_VMIP \
+            --data-disk-sizes-gb 1024
 
-    az vm open-port --resource-group $RESOURCE_GROUP --name $MGMT_VM_NAME \
-        --port 5601 --priority 100
-    az vm open-port --resource-group $RESOURCE_GROUP --name $MGMT_VM_NAME \
-        --port 3000 --priority 101
+        az vm open-port --resource-group $RESOURCE_GROUP --name $MGMT_VM_NAME \
+            --port 5601 --priority 100
+        az vm open-port --resource-group $RESOURCE_GROUP --name $MGMT_VM_NAME \
+            --port 3000 --priority 101
+    else
+        echo "Could not locate file supporting/monserver-cloud-init.txt; please check current directory"     
+    fi
+
+    # TODO - update ssh-agent keys in case of recreation
+
 
     # # Allow access to monitoring ports
     # # TODO - lock down publish from K8 host
@@ -253,58 +265,80 @@ deploy_acs_engine_k8() {
 
     # Get the kubectl configuration
     export master_fqdn=${K8_CLUSTER_NAME}.${LOCATION}.cloudapp.azure.com
-    scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox.pub \
+    scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
         $MGMT_USERNAME@$master_fqdn:.kube/config .
     export KUBECONFIG=`pwd`/config
-    cp $KUBECONFIG ~/.kube/config    
+    cp $KUBECONFIG ~/.kube/config 
+
+    scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox ${MGMT_USERNAME}@${master_fqdn}:.ssh/id_rsa
+    
+
+    #ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox $MGMT_USERNAME@$master_fqdn
 }
+
+
 
 configure_k8() { 
     # Create the service account and role bindings - TODO - create custom clusterrole
-    kubectl create serviceaccount fluentd-es
+    kubectl create serviceaccount fluentd-es --namespace kube-system
     kubectl create clusterrolebinding fluentd-es \
         --clusterrole=system:heapster-with-nanny \
-        --serviceaccount=kube-system:fluentd-es
+        --serviceaccount=kube-system:fluentd-es \
+        --namespace kube-system
 
     # Deploy fluentd for moving system logs to ELK
-    kubectl create -f fluentd-configmap.yaml
-    kubectl create -f fluentd-service.yaml
+    kubectl apply -f supporting/fluentd-configmap.yaml
+    kubectl create -f supporting/fluentd-service.yaml
 
     # Deploy heapster for logging to influxdb
-    kubectl apply -f heapster-to-influx.yaml
+    kubectl apply -f supporting/heapster-to-influx.yaml
 }
 
-configure_glusterfs() {
-    ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox.pub \
-        $MGMT_USERNAME@$master_fqdn
+configure_glusterfs() {    
+    kubectl create namespace gluster
 
     # Execute the glusterfs-client install script on each gluster agent node
     # sudo apt install glusterfs-client
-    NODES=($(kubectl get nodes --selector=functions-role=worker -o jsonpath='{.items[*].metadata.name}'))
+    NODES=($(kubectl get nodes  -o jsonpath='{.items[*].metadata.name}'))
     for node in "${NODES[@]}"
     do
         echo "Installing glusterfs on $node"
         ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
             -o ProxyCommand="ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox -W %h:%p ${MGMT_USERNAME}@${master_fqdn}" \
             -l ${MGMT_USERNAME} ${node} \
-            sudo apt-get install -Y glusterfs-client
+            "sudo apt-get -y install glusterfs-client && sudo ln -s /sbin/modprobe /usr/sbin/modprobe"
+
+        # Install the required kernal modules
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
+            -o ProxyCommand="ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox -W %h:%p ${MGMT_USERNAME}@${master_fqdn}" \
+            -l ${MGMT_USERNAME} ${node} \
+            "sudo modprobe dm_snapshot && sudo modprobe dm_mirror && sudo modprobe dm_thin_pool"
     done
-}
 
-retrieve_credentials() 
-{
-    az keyvault secret download --vault-name ${KEYVAULT_NAME} \
-        --name jumpbox-ssh --file  ~/.ssh/vnettest-jumpbox
-    az keyvault secret download --vault-name ${KEYVAULT_NAME} \
-        --name jumpbox-ssh-pub --file  ~/.ssh/vnettest-jumpbox.pub
-    chmod 600 ~/.ssh/vnettest-jumpbox 
-    chmod 600 ~/.ssh/vnettest-jumpbox.pub
+    DISK_NODES_IP=($(kubectl get nodes --selector=functions-role=diskhost -o jsonpath={.items[*].status.addresses[].address}))
+    DISK_NODES_NAME=($(kubectl get nodes --selector=functions-role=diskhost -o jsonpath={.items[*].metadata.name}))
 
-    export master_fqdn=${K8_CLUSTER_NAME}.${LOCATION}.cloudapp.azure.com
+    cp gluster-topology.json gluster-live-topology.json
+
+    echo "Updating deployment settings in file kubernetes-deployment.json"    
+    sed -i'' "s/%NODE0_IP%/${DISK_NODES_IP[0]}/" gluster-live-topology.json
+    sed -i'' "s/%NODE1_IP%/${DISK_NODES_IP[1]}/" gluster-live-topology.json
+    sed -i'' "s/%NODE2_IP%/${DISK_NODES_IP[2]}/" gluster-live-topology.json
+    
+    sed -i'' "s/%NODE0_NAME%/${DISK_NODES_NAME[0]}/" gluster-live-topology.json
+    sed -i'' "s/%NODE1_NAME%/${DISK_NODES_NAME[1]}/" gluster-live-topology.json
+    sed -i'' "s/%NODE2_NAME%/${DISK_NODES_NAME[2]}/" gluster-live-topology.json
+    
+    ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
+        ${MGMT_USERNAME}@${master_fqdn} \
+        git clone https://github.com/gluster/gluster-kubernetes.git
+
     scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
-        $MGMT_USERNAME@$master_fqdn:.kube/config .
-    export KUBECONFIG=`pwd`/config
-    cp $KUBECONFIG ~/.kube/config    
+        ./gluster-live-topology.json ${MGMT_USERNAME}@${master_fqdn}:gluster-kubernetes/deploy/topology.json 
+    
+    ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
+        ${MGMT_USERNAME}@${master_fqdn} \
+        "cd gluster-kubernetes/deploy && ./gk-deploy -y -g -n gluster "    
 }
 
 create_shared_resources()
@@ -330,15 +364,21 @@ create_shared_resources()
 }
 
 main() { 
-    set_variables
-    deploy_shared
-    deploy_monitoring_vm
+    #set_variables
+    #deploy_shared
+    #deploy_monitoring_vm
+    #create_shared_resources
 
+    # AKS deployment
     #deploy_aks_k8
-    #deploy_acs_k8
-    deploy_acs_engine_k8
 
-    configure_k8
+    # ACS deployment
+    #deploy_acs_k8
+
+    # ACS-Engine deployment
+    #deploy_acs_engine_k8
+    #configure_k8
+    #configure_glusterfs
 }
 
 main
