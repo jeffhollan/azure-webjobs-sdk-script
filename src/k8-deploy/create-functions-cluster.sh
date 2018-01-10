@@ -23,16 +23,16 @@ set_variables() {
     export K8_VNET_NAME=funcexprk8-vnet
     export K8_VNET_CIDR=10.10.0.0/16
 
-    export K8_VNET_SUBNET_MGMT_CIDR=10.10.3.0/24
     export K8_VNET_SUBNET_MGMT_NAME=k8mgmt-subnet
+    export K8_VNET_SUBNET_MGMT_CIDR=10.10.3.0/24    
     export K8_VNET_SUBNET_MGMT_VMIP=10.10.3.10
 
-    export K8_VNET_SUBNET_MASTER_CIDR=10.10.1.0/24
     export K8_VNET_SUBNET_MASTER_NAME=k8master-subnet
-    export K8_VNET_SUBNET_MASTER_FIRSTIP=10.10.1.10
+    export K8_VNET_SUBNET_MASTER_CIDR=10.10.1.0/24    
+    export K8_VNET_SUBNET_MASTER_FIRSTIP=10.10.1.239
 
-    export K8_VNET_SUBNET_AGENT_CIDR=10.10.2.0/24
     export K8_VNET_SUBNET_AGENT_NAME=k8agent-subnet
+    export K8_VNET_SUBNET_AGENT_CIDR=10.10.2.0/24
 
     # Shared Keyvault
     export KEYVAULT_NAME=funcexpk8-kv
@@ -86,21 +86,35 @@ deploy_shared() {
     az keyvault secret set --vault-name ${KEYVAULT_NAME} \
         --name jumpbox-ssh-pub --file  ~/.ssh/vnettest-jumpbox.pub
 
+    # Generate a windows password for auth
+    if [ ! -f ~/.ssh/vnettest-password ]; then
+        mgmt_pw=$(pwgen 16 1)
+        echo $mgmt_pw > ~/.ssh/vnettest-password
+        chmod 600  ~/.ssh/vnettest-password
+    fi
+    export MGMT_PASSWORD=$(cat  ~/.ssh/vnettest-password)
+    az keyvault secret set --vault-name ${KEYVAULT_NAME} \
+        --name jumpbox-pw --file ~/.ssh/vnettest-password
+    
+    echo "Creating service principal"
+    export subid=$(az account show --query id | tr -d '"')
+    az ad sp create-for-rbac --role="Contributor" \
+        --scopes="/subscriptions/$subid/resourceGroups/$RESOURCE_GROUP" > adrole.json
+    export spid=$(cat adrole.json | jq .appId | tr -d '"')
+    export sppw=$(cat adrole.json | jq .password | tr -d '"')
+    echo "Service principal app id = $spid"
+
     # Create the container registry
     echo "Creating container registry"
 
-    # az acr login --name $REGISTRY_NAME
     # TODO - auth the acr to the cluster below
     az acr create --resource-group $RESOURCE_GROUP \
         --name $REGISTRY_NAME --sku Basic --admin-enabled true
+    registryId=$(az acr show --resource-group $RESOURCE_GROUP --name $REGISTRY_NAME \
+        --query id --output tsv)    
+     az role assignment create --scope $registryId \
+         --role Owner --assignee $spid
 
-    echo "Creating service principal"
-    subid=$(az account show --query id | tr -d '"')
-    az ad sp create-for-rbac --role="Contributor" \
-        --scopes="/subscriptions/$subid/resourceGroups/$RESOURCE_GROUP" > adrole.json
-    spid=$(cat adrole.json | jq .appId | tr -d '"')
-    sppw=$(cat adrole.json | jq .password | tr -d '"')
-    echo "Service principal app id = $spid"
 }
 
 
@@ -118,34 +132,39 @@ deploy_monitoring_vm() {
         --private-ip-address $K8_VNET_SUBNET_MGMT_VMIP \
         --data-disk-sizes-gb 1024
 
-    # Allow access to monitoring ports
-    # TODO - lock down publish from K8 host
-    nsgName=$(az network nsg list --resource-group $RESOURCE_GROUP | \
-        jq ".[].name|select(startswith(\"$MGMT_VM_NAME\"))" | tr -d '"')
+    az vm open-port --resource-group $RESOURCE_GROUP --name $MGMT_VM_NAME \
+        --port 5601 --priority 100
+    az vm open-port --resource-group $RESOURCE_GROUP --name $MGMT_VM_NAME \
+        --port 3000 --priority 101
+
+    # # Allow access to monitoring ports
+    # # TODO - lock down publish from K8 host
+    # nsgName=$(az network nsg list --resource-group $RESOURCE_GROUP | \
+    #     jq ".[].name|select(startswith(\"$MGMT_VM_NAME\"))" | tr -d '"')
         
-    az network nsg rule create --resource-group $RESOURCE_GROUP --nsg-name $nsgName \
-        --name allow-monitoring-influx-rule --priority 105 \
-        --description "Allow incoming connections to InfluxDB" \
-        --protocol tcp --access Allow --direction Inbound \
-        --destination-port-ranges 8086
+    # az network nsg rule create --resource-group $RESOURCE_GROUP --nsg-name $nsgName \
+    #     --name allow-monitoring-influx-rule --priority 105 \
+    #     --description "Allow incoming connections to InfluxDB" \
+    #     --protocol tcp --access Allow --direction Inbound \
+    #     --destination-port-ranges 8086
 
-    az network nsg rule create --resource-group $RESOURCE_GROUP --nsg-name $nsgName \
-        --name allow-monitoring-grafana-rule --priority 106 \
-        --description "Allow incoming connections to Grafana" \
-        --protocol tcp --access Allow --direction Inbound \
-        --destination-port-ranges 3000
+    # az network nsg rule create --resource-group $RESOURCE_GROUP --nsg-name $nsgName \
+    #     --name allow-monitoring-grafana-rule --priority 106 \
+    #     --description "Allow incoming connections to Grafana" \
+    #     --protocol tcp --access Allow --direction Inbound \
+    #     --destination-port-ranges 3000
 
-    az network nsg rule create --resource-group $RESOURCE_GROUP --nsg-name $nsgName \
-        --name allow-monitoring-elasticsearch-rule --priority 107 \
-        --description "Allow incoming connections to ElasticSearch" \
-        --protocol tcp --access Allow --direction Inbound \
-        --destination-port-ranges 9200
+    # az network nsg rule create --resource-group $RESOURCE_GROUP --nsg-name $nsgName \
+    #     --name allow-monitoring-elasticsearch-rule --priority 107 \
+    #     --description "Allow incoming connections to ElasticSearch" \
+    #     --protocol tcp --access Allow --direction Inbound \
+    #     --destination-port-ranges 9200
 
-    az network nsg rule create --resource-group $RESOURCE_GROUP --nsg-name $nsgName \
-        --name allow-monitoring-kibana-rule --priority 108 \
-        --description "Allow incoming connections to Kibana" \
-        --protocol tcp --access Allow --direction Inbound \
-        --destination-port-ranges 5601
+    # az network nsg rule create --resource-group $RESOURCE_GROUP --nsg-name $nsgName \
+    #     --name allow-monitoring-kibana-rule --priority 108 \
+    #     --description "Allow incoming connections to Kibana" \
+    #     --protocol tcp --access Allow --direction Inbound \
+    #     --destination-port-ranges 5601
 
     # TODO - may need to add inbound port allows
 }
@@ -196,14 +215,8 @@ deploy_acs_k8() {
         echo "adding label:$LABEL to node:$node"
         kubectl label nodes "$node" $LABEL 
     done
-}
 
-deploy_acs_engine_k8() {
-
-}
-
-configure_k8() { 
-  
+      
 
     # Prepare agent nodes 0..2 as disk hosting nodes (for glusterfs, etc)
     # TODO - attach disks
@@ -212,6 +225,41 @@ configure_k8() {
     # Label the remainder of the nodes as worker nodes
 
 
+}
+
+deploy_acs_engine_k8() {
+    export master_subnetid=$(az network vnet subnet show --resource-group ${RESOURCE_GROUP} --vnet-name ${K8_VNET_NAME} --name $K8_VNET_SUBNET_MASTER_NAME --query id --output tsv)
+    export agent_subnetid=$(az network vnet subnet show --resource-group ${RESOURCE_GROUP} --vnet-name ${K8_VNET_NAME} --name $K8_VNET_SUBNET_AGENT_NAME --query id --output tsv)
+
+    cp kubernetes-cluster-definition.json kubernetes-deployment.json
+    echo "Updating deployment settings in file kubernetes-deployment.json"
+    sed -i'' "s/%K8_DNS_PREFIX%/$K8_DNS_PREFIX/" kubernetes-deployment.json
+    sed -i'' "s#%K8_VNET_SUBNET_MASTER%#$master_subnetid#" kubernetes-deployment.json
+    sed -i'' "s/%K8_VNET_SUBNET_MASTER_FIRSTIP%/$K8_VNET_SUBNET_MASTER_FIRSTIP/" kubernetes-deployment.json
+    sed -i'' "s#%K8_VNET_CIDR%#$K8_VNET_CIDR#" kubernetes-deployment.json
+    sed -i'' "s/%K8_NODE_SIZE%/$K8_NODE_SIZE/" kubernetes-deployment.json
+    sed -i'' "s#%K8_VNET_SUBNET_AGENT%#$agent_subnetid#" kubernetes-deployment.json
+    
+    sed -i'' "s/%MGMT_USERNAME%/$MGMT_USERNAME/" kubernetes-deployment.json
+    sed -i'' "s/%MGMT_PASSWORD%/$MGMT_PASSWORD/" kubernetes-deployment.json
+    sed -i'' "s#%SSH_KEYDATA%#$SSH_KEYDATA#" kubernetes-deployment.json
+    sed -i'' "s/%SP_CLIENTID%/$spid/" kubernetes-deployment.json
+    sed -i'' "s/%SP_SECRET%/$sppw/" kubernetes-deployment.json    
+
+    acs-engine deploy --subscription-id $subid \
+        --location $LOCATION \
+        --resource-group $RESOURCE_GROUP \
+        --api-model kubernetes-deployment.json
+
+    # Get the kubectl configuration
+    export master_fqdn=${K8_CLUSTER_NAME}.${LOCATION}.cloudapp.azure.com
+    scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox.pub \
+        $MGMT_USERNAME@$master_fqdn:.kube/config .
+    export KUBECONFIG=`pwd`/config
+    cp $KUBECONFIG ~/.kube/config
+}
+
+configure_k8() { 
     # Create the service account and role bindings - TODO - create custom clusterrole
     kubectl create serviceaccount fluentd-es
     kubectl create clusterrolebinding fluentd-es \
@@ -223,7 +271,7 @@ configure_k8() {
     kubectl create -f fluentd-service.yaml
 
     # Deploy heapster for logging to influxdb
-    kubectl create -f heapster-to-influx.yaml
+    kubectl apply -f heapster-to-influx.yaml
 }
 
 create_shared_resources()
@@ -253,7 +301,10 @@ main() {
     deploy_shared
     deploy_monitoring_vm
 
-    deploy_acs_k8
+    #deploy_aks_k8
+    #deploy_acs_k8
+    deploy_acs_engine_k8
+
     configure_k8
 }
 

@@ -25,7 +25,7 @@ spec:
         command:
         - /heapster
         - --source=kubernetes:https://kubernetes.default.svc
-        - --sink=influxdb:http://masmonk8.centralus.cloudapp.azure.com:8086
+        - --sink=influxdb:http://10.10.3.10:8086
 ---
 apiVersion: v1
 kind: Service

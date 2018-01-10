@@ -8,10 +8,9 @@
       "masterProfile": {
         "count": 3,
         "dnsPrefix": "%K8_DNS_PREFIX%",
-        "vmSize": "Standard_D1_v2",
-
+        "vmSize": "Standard_D2_v2",
         "vnetSubnetId": "%K8_VNET_SUBNET_MASTER%",
-        "firstConsecutiveStaticIP": "%K8_VNET_SUBNET_MASTER_FIRSTIP",
+        "firstConsecutiveStaticIP": "%K8_VNET_SUBNET_MASTER_FIRSTIP%",
         "vnetCidr": "%K8_VNET_CIDR%"
       },
       "agentPoolProfiles": [
@@ -27,7 +26,7 @@
           }
         },
         {
-            "name": "workerhost-linux",
+            "name": "wrklinux",
             "count": 3,
             "vmSize": "%K8_NODE_SIZE%",
             "availabilityProfile": "AvailabilitySet",
@@ -36,23 +35,10 @@
             "diskSizesGB": [1023, 1023],
             "vnetSubnetId": "%K8_VNET_SUBNET_AGENT%",
             "customNodeLabels": {
-                "functions-role": "worker"            
-              }
-          },
-          {
-            "name": "workerhost-windows",
-            "count": 3,
-            "vmSize": "%K8_NODE_SIZE%",
-            "availabilityProfile": "AvailabilitySet",
-            "OSDiskSizeGB": 512,
-            "storageProfile" : "ManagedDisks",
-            "vnetSubnetId": "%K8_VNET_SUBNET_AGENT%",
-            "osType": "Windows",
-            "customNodeLabels": {
                 "functions-role": "worker",
                 "beta.kubernetes.io/fluentd-ds-ready" : "true"
               }
-          }
+          }       
       ],
       "linuxProfile": {
         "adminUsername": "%MGMT_USERNAME%",
@@ -63,6 +49,10 @@
             }
           ]
         }
+      },
+      "windowsProfile": {
+        "adminUsername": "%MGMT_USERNAME%",
+        "adminPassword": "%MGMT_PASSWORD%"
       },
       "servicePrincipalProfile": {
         "clientId": "%SP_CLIENTID%",

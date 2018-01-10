@@ -7,66 +7,55 @@
       },
       "masterProfile": {
         "count": 3,
-        "dnsPrefix": "%K8_DNS_PREFIX%",
-        "vmSize": "Standard_D1_v2",
-
-        "vnetSubnetId": "%K8_VNET_SUBNET_MASTER%",
-        "firstConsecutiveStaticIP": "%K8_VNET_SUBNET_MASTER_FIRSTIP",
-        "vnetCidr": "%K8_VNET_CIDR%"
+        "dnsPrefix": "mask8test-k8",
+        "vmSize": "Standard_D2_v2",
+        "vnetSubnetId": "/subscriptions/3e9c25fc-55b3-4837-9bba-02b6eb204331/resourceGroups/mask8test-rg/providers/Microsoft.Network/virtualNetworks/funcexprk8-vnet/subnets/k8master-subnet",
+        "firstConsecutiveStaticIP": "10.10.1.239",
+        "vnetCidr": "10.10.0.0/16"
       },
       "agentPoolProfiles": [
         {
           "name": "diskhost",
           "count": 3,
-          "vmSize": "%K8_NODE_SIZE%",
+          "vmSize": "Standard_DS4_v2",
           "availabilityProfile": "AvailabilitySet",
-          "vnetSubnetId": "%K8_VNET_SUBNET_AGENT%",
+          "vnetSubnetId": "/subscriptions/3e9c25fc-55b3-4837-9bba-02b6eb204331/resourceGroups/mask8test-rg/providers/Microsoft.Network/virtualNetworks/funcexprk8-vnet/subnets/k8agent-subnet",
           "customNodeLabels": {
             "functions-role": "diskhost",
             "beta.kubernetes.io/fluentd-ds-ready" : "true"
           }
         },
         {
-            "name": "workerhost-linux",
+            "name": "wrklinux",
             "count": 3,
-            "vmSize": "%K8_NODE_SIZE%",
+            "vmSize": "Standard_DS4_v2",
             "availabilityProfile": "AvailabilitySet",
             "OSDiskSizeGB": 512,
             "storageProfile" : "ManagedDisks",
             "diskSizesGB": [1023, 1023],
-            "vnetSubnetId": "%K8_VNET_SUBNET_AGENT%",
+            "vnetSubnetId": "/subscriptions/3e9c25fc-55b3-4837-9bba-02b6eb204331/resourceGroups/mask8test-rg/providers/Microsoft.Network/virtualNetworks/funcexprk8-vnet/subnets/k8agent-subnet",
             "customNodeLabels": {
                 "functions-role": "worker"            
               }
-          },
-          {
-            "name": "workerhost-windows",
-            "count": 3,
-            "vmSize": "%K8_NODE_SIZE%",
-            "availabilityProfile": "AvailabilitySet",
-            "OSDiskSizeGB": 512,
-            "storageProfile" : "ManagedDisks",
-            "vnetSubnetId": "%K8_VNET_SUBNET_AGENT%",
-            "osType": "Windows",
-            "customNodeLabels": {
-                "functions-role": "worker",
-                "beta.kubernetes.io/fluentd-ds-ready" : "true"
-              }
-          }
+          }       
       ],
       "linuxProfile": {
-        "adminUsername": "%MGMT_USERNAME%",
+        "adminUsername": "masimms",
         "ssh": {
           "publicKeys": [
             {
-              "keyData": "%SSH_KEYDATA%"
+              "keyData": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC1jyGWemU8M8WyaJZS9KDNnJtLVAq0L/SsuIMlXvBQKV3THJtGGCTQ3vbaLSMVt8bcHae5DLopLBKfYsaPN6q7er4NMuM4oRskdkS/7nG2qm7klv5K0cqTeVBqRicNIoT9dWH3mqLilc+ybJ3+cRanUK1LNywBAUSWyX5CUkA/0b2+KXCV4IILjYJOZh7kO/6Rgxwahed7SIkygTkWruIvAg3bsXKnDnmYUV1SEkcLmuTgjCtD/mWPC9KjIkrda7I/4I9aO/65dtWAXaNZYajhJ0Tze5BYev+aJCrC63W7lDuXQ5KV8oJXr3bVWdphNL3cToOJIM6fkWrMRTicJ60T masimms@masimms-laptop"
             }
           ]
         }
       },
+      "windowsProfile": {
+        "adminUsername": "masimms",
+        "adminPassword": "naengeiSuuroor0e"
+      },
       "servicePrincipalProfile": {
-        "clientId": "%SP_CLIENTID%",
-        "secret": "%SP_SECRET%"
+        "clientId": "4a8fa02c-4843-4e8e-b2ae-fda62cccc35d",
+        "secret": "84c52e3e-b1d8-411e-9efa-7c69aa766451"
       }
     }
   }
