@@ -289,9 +289,22 @@ configure_glusterfs() {
             -l ${MGMT_USERNAME} ${node} \
             sudo apt-get install -Y glusterfs-client
     done
+}
 
- 
+retrieve_credentials() 
+{
+    az keyvault secret download --vault-name ${KEYVAULT_NAME} \
+        --name jumpbox-ssh --file  ~/.ssh/vnettest-jumpbox
+    az keyvault secret download --vault-name ${KEYVAULT_NAME} \
+        --name jumpbox-ssh-pub --file  ~/.ssh/vnettest-jumpbox.pub
+    chmod 600 ~/.ssh/vnettest-jumpbox 
+    chmod 600 ~/.ssh/vnettest-jumpbox.pub
 
+    export master_fqdn=${K8_CLUSTER_NAME}.${LOCATION}.cloudapp.azure.com
+    scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
+        $MGMT_USERNAME@$master_fqdn:.kube/config .
+    export KUBECONFIG=`pwd`/config
+    cp $KUBECONFIG ~/.kube/config    
 }
 
 create_shared_resources()
