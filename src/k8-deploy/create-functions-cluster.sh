@@ -13,9 +13,26 @@ set_variables() {
 
     export K8_NODE_SIZE=Standard_DS4_v2
     export K8_DISK_SIZE=1023
-    export K8_NODE_COUNT=3
+    export K8_NODE_COUNT=6
     export K8_DNS_PREFIX=mask8test-k8
     export K8_CLUSTER_NAME=mask8test-k8
+
+    # Virtual Network
+
+    # TODO - generate K8_VNET_SUBNET_MASTER
+    export K8_VNET_NAME=funcexprk8-vnet
+    export K8_VNET_CIDR=10.10.0.0/16
+
+    export K8_VNET_SUBNET_MGMT_CIDR=10.10.3.0/24
+    export K8_VNET_SUBNET_MGMT_NAME=k8mgmt-subnet
+    export K8_VNET_SUBNET_MGMT_VMIP=10.10.3.10
+
+    export K8_VNET_SUBNET_MASTER_CIDR=10.10.1.0/24
+    export K8_VNET_SUBNET_MASTER_NAME=k8master-subnet
+    export K8_VNET_SUBNET_MASTER_FIRSTIP=10.10.1.10
+
+    export K8_VNET_SUBNET_AGENT_CIDR=10.10.2.0/24
+    export K8_VNET_SUBNET_AGENT_NAME=k8agent-subnet
 
     # Shared Keyvault
     export KEYVAULT_NAME=funcexpk8-kv
@@ -33,6 +50,22 @@ set_variables() {
 deploy_shared() { 
     # Create the basic resource group
     az group create --name $RESOURCE_GROUP --location $LOCATION
+
+    # Create a virtual network and related subnets
+    az network vnet create --resource-group ${RESOURCE_GROUP} \
+        --name ${K8_VNET_NAME} --address-prefixes ${K8_VNET_CIDR} 
+
+    az network vnet subnet create --resource-group ${RESOURCE_GROUP} \
+        --vnet-name $K8_VNET_NAME --name $K8_VNET_SUBNET_MGMT_NAME \
+        --address-prefix $K8_VNET_SUBNET_MGMT_CIDR
+
+    az network vnet subnet create --resource-group ${RESOURCE_GROUP} \
+        --vnet-name $K8_VNET_NAME --name $K8_VNET_SUBNET_MASTER_NAME \
+        --address-prefix $K8_VNET_SUBNET_MASTER_CIDR
+
+    az network vnet subnet create --resource-group ${RESOURCE_GROUP} \
+        --vnet-name $K8_VNET_NAME --name $K8_VNET_SUBNET_AGENT_NAME \
+        --address-prefix $K8_VNET_SUBNET_AGENT_CIDR
 
     # Create a key vault
     az keyvault create --resource-group ${RESOURCE_GROUP} \
@@ -61,7 +94,13 @@ deploy_shared() {
     az acr create --resource-group $RESOURCE_GROUP \
         --name $REGISTRY_NAME --sku Basic --admin-enabled true
 
-    # az ad sp create-for-rbac --scopes /subscriptions/3e9c25fc-55b3-4837-9bba-02b6eb204331/resourceGroups/mask8test-rg/providers/Microsoft.ContainerRegistry/registries/funcexpk8reg --role Owner --password <password>
+    echo "Creating service principal"
+    subid=$(az account show --query id | tr -d '"')
+    az ad sp create-for-rbac --role="Contributor" \
+        --scopes="/subscriptions/$subid/resourceGroups/$RESOURCE_GROUP" > adrole.json
+    spid=$(cat adrole.json | jq .appId | tr -d '"')
+    sppw=$(cat adrole.json | jq .password | tr -d '"')
+    echo "Service principal app id = $spid"
 }
 
 
@@ -75,6 +114,8 @@ deploy_monitoring_vm() {
         --storage-sku Premium_LRS \
         --public-ip-address-dns-name $MGMT_DNS_NAME \
         --custom-data supporting/monserver-cloud-init.txt \
+        --vnet-name $K8_VNET_NAME --subnet $K8_VNET_SUBNET_MGMT_NAME \
+        --private-ip-address $K8_VNET_SUBNET_MGMT_VMIP \
         --data-disk-sizes-gb 1024
 
     # Allow access to monitoring ports
@@ -123,12 +164,6 @@ deploy_aks_k8() {
 
 deploy_acs_k8() { 
     echo "Creating k8 cluster"
-  
-    subid=$(az account show --query id | tr -d '"')
-    az ad sp create-for-rbac --role="Contributor" \
-        --scopes="/subscriptions/$subid/resourceGroups/$RESOURCE_GROUP" > adrole.json
-    spid=$(cat adrole.json | jq .appId | tr -d '"')
-    sppw=$(cat adrole.json | jq .password | tr -d '"')
 
     az acs create --orchestrator-type=kubernetes \
         --resource-group $RESOURCE_GROUP \
@@ -152,10 +187,8 @@ deploy_acs_k8() {
 
     az acs kubernetes browse --resource-group $RESOURCE_GROUP \
         --name $K8_CLUSTER_NAME --ssh-key-file ~/.ssh/vnettest-jumpbox
-}
 
-configure_k8() { 
-
+    # Label all of the agent nodes for log collection
     LABEL='beta.kubernetes.io/fluentd-ds-ready=true'
     NODES=($(kubectl get nodes --selector=kubernetes.io/role=agent -o jsonpath='{.items[*].metadata.name}'))
     for node in "${NODES[@]}"
@@ -163,6 +196,21 @@ configure_k8() {
         echo "adding label:$LABEL to node:$node"
         kubectl label nodes "$node" $LABEL 
     done
+}
+
+deploy_acs_engine_k8() {
+
+}
+
+configure_k8() { 
+  
+
+    # Prepare agent nodes 0..2 as disk hosting nodes (for glusterfs, etc)
+    # TODO - attach disks
+    # TODO - label the nodes
+
+    # Label the remainder of the nodes as worker nodes
+
 
     # Create the service account and role bindings - TODO - create custom clusterrole
     kubectl create serviceaccount fluentd-es

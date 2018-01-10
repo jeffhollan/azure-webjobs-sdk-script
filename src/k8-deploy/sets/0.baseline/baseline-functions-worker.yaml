@@ -5,7 +5,7 @@ metadata:
   labels:
     app: functions-worker-host  
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels: 
       app: functions-worker-host
@@ -34,6 +34,18 @@ spec:
               configMapKeyRef:
                 name: deployment-config
                 key: FUNCTION_DEPLOYMENT            
+
+          - name: FUNCTION_STORAGE_PROVIDER
+            valueFrom:
+              configMapKeyRef:
+                name: deployment-config
+                key: FUNCTION_STORAGE_PROVIDER    
+
+          - name: FUNCTION_SAMPLE_SET
+            valueFrom:
+              configMapKeyRef:
+                name: deployment-config
+                key: FUNCTION_SAMPLE_SET    
 
           # Map in the configuration file
           - name: FUNCTIONS_K8CONFIG
