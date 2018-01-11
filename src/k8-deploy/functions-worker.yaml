@@ -1,70 +1,70 @@
-apiVersion: apps/v1
+apiVersion: apps/v1beta1
 kind: Deployment
 metadata:
   labels:
     app: functions-worker-host
   name: functions-worker-host
 spec:
+  replicas: 1
+  selector:
+    matchLabels: 
+      app: functions-worker-host
   template:
     metadata:
-      labels:
+      labels: 
         app: functions-worker-host
     spec:
-      replicas: 1
-      selector:
-        matchLabels: functions-worker-host
-      template:
-        metadata:
-          labels: functions-worker-host
-        spec:
-          containers:
-            - name: functions-worker-host
-              image: mabsimms/k8host:latest
-              volumeMounts:
-              - name: config-volume
-                mountPath: /config
-              #- name: scripts-local-volume
-              #  mountPath: /scripts
-              - name: scripts-azurefiles-volume
-                mountPath: /scripts
-              - name: logs-volume
-                mountPath: /logs      
-              env:
-              # Set the internal logging labels and annotations.  Use this to identify the
-              # version and configuration 
-              - name: FUNCTION_DEPLOYMENT
-                value: "TODO"
-
-              # Map in the configuration file
-              - name: FUNCTIONS_K8CONFIG
-                value: '/config/appsettings.json'
-
-              # Project K8 context into the container
-              - name: FUNCTION_POD_NAME
-                valueFrom:
-                  fieldRef:
-                    fieldPath: metadata.name
-              - name: FUNCTION_NODE_NAME
-                valueFrom:
-                  fieldRef:
-                    fieldPath: spec.nodeName
-              - name: FUNCTION_NAMESPACE_NAME
-                valueFrom:
-                  fieldRef:
-                    fieldPath: metadata.namespace
-              - name: FUNCTION_POD_IP
-                valueFrom:
-                  fieldRef:
-                    fieldPath: status.podIP
-          volumes:
+      containers:
+        - name: functions-worker-host
+          image: mabsimms/k8host:latest
+          volumeMounts:
           - name: config-volume
-            configMap:
-              name: functions-config             
-          - name: logs-volume
-            emptyDir: {}
-          - name: scripts-local-volume
-            emptyDir: {}
+            mountPath: /config
+          #- name: scripts-local-volume
+          #  mountPath: /scripts
           - name: scripts-azurefiles-volume
-            azureFile:
-              secretName: script-azure-file
-              shareName:  scriptshare
+            mountPath: /scripts
+          - name: logs-volume
+            mountPath: /logs      
+          env:
+          # Set the internal logging labels and annotations.  Use this to identify the
+          # version and configuration 
+          - name: FUNCTION_DEPLOYMENT
+            value: "TODO"
+
+          # Map in the configuration file
+          - name: FUNCTIONS_K8CONFIG
+            value: '/config/appsettings.json'
+
+          # Project K8 context into the container
+          - name: FUNCTION_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: FUNCTION_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: FUNCTION_NAMESPACE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: FUNCTION_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+      volumes:
+      - name: config-volume
+        configMap:
+          name: functions-config             
+      - name: logs-volume
+        emptyDir: {}
+      - name: scripts-local-volume
+        emptyDir: {}
+      - name: scripts-azurefiles-volume
+        azureFile:
+          secretName: script-azure-file
+          shareName:  scriptshare
+      - name: scripts-glusterfs-volume
+        persistentVolumeClaim:
+          claimName: functions-share

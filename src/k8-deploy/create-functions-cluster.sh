@@ -96,19 +96,7 @@ deploy_shared() {
     az keyvault secret set --vault-name ${KEYVAULT_NAME} \
         --name jumpbox-pw --file ~/.ssh/vnettest-password
     
-    echo "Creating service principal"
-    export subid=$(az account show --query id | tr -d '"')
-    az ad sp create-for-rbac --role="Contributor" \
-        --scopes="/subscriptions/$subid/resourceGroups/$RESOURCE_GROUP" > adrole.json
-
-    unset spid
-    unset sppw
-
-    export spid=$(cat adrole.json | jq .appId | tr -d '"')
-    export sppw=$(cat adrole.json | jq .password | tr -d '"')
-    echo "Service principal app id = $spid"
-    az keyvault secret set --vault-name ${KEYVAULT_NAME} \
-        --name rbac-role --file adrole.json
+  
 
     # Create the container registry
     #echo "Creating container registry"
@@ -240,9 +228,27 @@ deploy_acs_k8() {
 }
 
 deploy_acs_engine_k8() {
+    # Create a service principal with rights to the subscription (required for managed
+    # disk creation).   TODO - determine if this can be scoped down
+    # TODO - figure out why this principal isn't being applied correctly?
+    echo "Creating service principal"
+    export subid=$(az account show --query id | tr -d '"')
+    az ad sp create-for-rbac --role="Contributor" \
+        --scopes="/subscriptions/$subid" > adrole.json
+
+    # unset K8_SERVICE_PRINCIPAL_ID
+    # unset K8_SERVICE_PRINCIPAL_SECRET
+
+    # export K8_SERVICE_PRINCIPAL_ID=$(cat adrole.json | jq .appId | tr -d '"')
+    # export K8_SERVICE_PRINCIPAL_SECRET=$(cat adrole.json | jq .password | tr -d '"')
+
+    # echo "Service principal app id = ${K8_SERVICE_PRINCIPAL_ID}"
+    # az keyvault secret set --vault-name ${KEYVAULT_NAME} \
+    #     --name rbac-role --file adrole.json
+
     export master_subnetid=$(az network vnet subnet show --resource-group ${RESOURCE_GROUP} --vnet-name ${K8_VNET_NAME} --name $K8_VNET_SUBNET_MASTER_NAME --query id --output tsv)
     export agent_subnetid=$(az network vnet subnet show --resource-group ${RESOURCE_GROUP} --vnet-name ${K8_VNET_NAME} --name $K8_VNET_SUBNET_AGENT_NAME --query id --output tsv)
-
+    
     cp kubernetes-cluster-definition.json kubernetes-deployment.json
     echo "Updating deployment settings in file kubernetes-deployment.json"
     sed -i'' "s/%K8_DNS_PREFIX%/$K8_DNS_PREFIX/" kubernetes-deployment.json
@@ -255,13 +261,25 @@ deploy_acs_engine_k8() {
     sed -i'' "s/%MGMT_USERNAME%/$MGMT_USERNAME/" kubernetes-deployment.json
     sed -i'' "s/%MGMT_PASSWORD%/$MGMT_PASSWORD/" kubernetes-deployment.json
     sed -i'' "s#%SSH_KEYDATA%#$SSH_KEYDATA#" kubernetes-deployment.json
-    sed -i'' "s/%SP_CLIENTID%/$spid/" kubernetes-deployment.json
-    sed -i'' "s/%SP_SECRET%/$sppw/" kubernetes-deployment.json    
 
+    # TODO - manual service principal creation not working
+    service_principal_id=$(cat adrole.json | jq .appId | tr -d '"')
+    service_principal_secret=$(cat adrole.json | jq .password | tr -d '"')
+    sed -i'' "s/%SP_CLIENTID%/$service_principal_id/" kubernetes-deployment.json
+    sed -i'' "s/%SP_SECRET%/$service_principal_secret/" kubernetes-deployment.json    
+
+    # Step 1 - generate the ARM templates for deploying the k8 cluster
+    export subid=$(az account show --query id | tr -d '"')
     acs-engine deploy --subscription-id $subid \
         --location $LOCATION \
         --resource-group $RESOURCE_GROUP \
-        --api-model kubernetes-deployment.json
+        --api-model kubernetes-deployment.json --debug
+
+    # Step 2 - inject the route table for the custom VNET
+
+    # Step 3 - deploy 
+
+    # Step 4 - update route table
 
     # Get the kubectl configuration
     export master_fqdn=${K8_CLUSTER_NAME}.${LOCATION}.cloudapp.azure.com
@@ -270,13 +288,27 @@ deploy_acs_engine_k8() {
     export KUBECONFIG=`pwd`/config
     cp $KUBECONFIG ~/.kube/config 
 
-    scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox ${MGMT_USERNAME}@${master_fqdn}:.ssh/id_rsa
+    # Copy the SSH key to the master node (0) to allow for easy ssh 
+    # access to the agents for diagnostic purposes
+    scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
+        ~/.ssh/vnettest-jumpbox ${MGMT_USERNAME}@${master_fqdn}:.ssh/id_rsa
     
-
+    # SSH command to access the master 
     #ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox $MGMT_USERNAME@$master_fqdn
 }
 
+upgrade_k8() { 
+    export subid=$(az account show --query id | tr -d '"')
 
+    acs-engine generate --api-model kubernetes-deployment.json
+
+    acs-engine upgrade \
+        --subscription-id $subid \
+        --deployment-dir ./_output/$K8_CLUSTER_NAME \
+        --location $LOCATION \
+        --resource-group $RESOURCE_GROUP \
+        --upgrade-version 1.8.4         
+}
 
 configure_k8() { 
     # Create the service account and role bindings - TODO - create custom clusterrole
@@ -312,7 +344,7 @@ configure_glusterfs() {
         ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
             -o ProxyCommand="ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox -W %h:%p ${MGMT_USERNAME}@${master_fqdn}" \
             -l ${MGMT_USERNAME} ${node} \
-            "sudo modprobe dm_snapshot && sudo modprobe dm_mirror && sudo modprobe dm_thin_pool"
+            "sudo modprobe dm_snapshot && sudo modprobe dm_mirror && sudo modprobe dm_thin_pool && sudo modprobe fuse"
     done
 
     DISK_NODES_IP=($(kubectl get nodes --selector=functions-role=diskhost -o jsonpath={.items[*].status.addresses[].address}))
@@ -338,7 +370,11 @@ configure_glusterfs() {
     
     ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
         ${MGMT_USERNAME}@${master_fqdn} \
-        "cd gluster-kubernetes/deploy && ./gk-deploy -y -g -n gluster "    
+        "cd gluster-kubernetes/deploy && ./gk-deploy -y -g -n gluster "  
+
+    # Create the storage class and a bound volume for testing
+    kubectl create -f gluster-storage-class.yaml  
+    kubectl create -f gluster-pvc.yaml    
 }
 
 create_shared_resources()

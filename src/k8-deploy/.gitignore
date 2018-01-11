@@ -4,3 +4,4 @@ adrole.json
 storage.txt
 storage-key.txt
 gluster-live-topology.json
+*.swp

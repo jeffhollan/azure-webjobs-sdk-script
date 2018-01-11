@@ -3,7 +3,10 @@
     "properties": {
       "orchestratorProfile": {
         "orchestratorType": "Kubernetes",
-        "orchestratorRelease": "1.9"
+        "kubernetesConfig": {
+          "networkPolicy": "none"
+        },
+        "orchestratorVersion": "1.8.4"
       },
       "masterProfile": {
         "count": 3,
@@ -57,8 +60,8 @@
         "adminPassword": "naengeiSuuroor0e"
       },
       "servicePrincipalProfile": {
-        "clientId": "39446c44-fd6b-48ac-ae7f-6c5baff2601b",
-        "secret": "3a371b25-d48f-42f7-8dd2-f939d19ff963"
+        "clientId": "0ec1b36e-fcaa-4c85-b4f0-1a2e723dfe40",
+        "secret": "c005f34b-4a86-49d0-80ca-15be4d1cb565"
       }
     }
   }
