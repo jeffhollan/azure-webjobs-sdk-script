@@ -236,16 +236,17 @@ deploy_acs_engine_k8() {
     az ad sp create-for-rbac --role="Contributor" \
         --scopes="/subscriptions/$subid" > adrole.json
 
+    echo "Service principal app id = ${K8_SERVICE_PRINCIPAL_ID}"
+    az keyvault secret set --vault-name ${KEYVAULT_NAME} \
+        --name rbac-role --file adrole.json
+
     # unset K8_SERVICE_PRINCIPAL_ID
     # unset K8_SERVICE_PRINCIPAL_SECRET
 
     # export K8_SERVICE_PRINCIPAL_ID=$(cat adrole.json | jq .appId | tr -d '"')
     # export K8_SERVICE_PRINCIPAL_SECRET=$(cat adrole.json | jq .password | tr -d '"')
 
-    # echo "Service principal app id = ${K8_SERVICE_PRINCIPAL_ID}"
-    # az keyvault secret set --vault-name ${KEYVAULT_NAME} \
-    #     --name rbac-role --file adrole.json
-
+    
     export master_subnetid=$(az network vnet subnet show --resource-group ${RESOURCE_GROUP} --vnet-name ${K8_VNET_NAME} --name $K8_VNET_SUBNET_MASTER_NAME --query id --output tsv)
     export agent_subnetid=$(az network vnet subnet show --resource-group ${RESOURCE_GROUP} --vnet-name ${K8_VNET_NAME} --name $K8_VNET_SUBNET_AGENT_NAME --query id --output tsv)
     
