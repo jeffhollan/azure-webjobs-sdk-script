@@ -110,6 +110,15 @@ deploy_shared() {
     #      --role Owner --assignee $spid
 }
 
+retrieve_credentials() {
+    az keyvault secret download --vault-name ${KEYVAULT_NAME} \
+        --name jumpbox-ssh --file  ~/.ssh/vnettest-jumpbox
+    chmod 0600 ~/.ssh/vnettest-jumpbox
+
+    az keyvault secret download --vault-name ${KEYVAULT_NAME} \
+        --name jumpbox-ssh-pub --file  ~/.ssh/vnettest-jumpbox.pub
+    chmod 0600 ~/.ssh/vnettest-jumpbox.pub    
+}
 
 deploy_monitoring_vm() {
     # Create the monitoring VM
