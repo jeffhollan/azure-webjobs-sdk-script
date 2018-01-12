@@ -3,7 +3,7 @@ kind: PersistentVolumeClaim
 metadata:
  name: functions-share
  annotations:
-   volume.beta.kubernetes.io/storage-class: gluster-heketi
+   volume.beta.kubernetes.io/storage-class: glusterfs-storage
 spec:
  accessModes:
   - ReadWriteMany
