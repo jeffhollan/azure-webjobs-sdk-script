@@ -4,7 +4,7 @@
       "orchestratorProfile": {
         "orchestratorType": "Kubernetes",
         "kubernetesConfig": {
-          "networkPolicy": "none"
+          "networkPolicy": "azure"
         },
         "orchestratorVersion": "1.8.4"
       },
@@ -60,8 +60,8 @@
         "adminPassword": "naengeiSuuroor0e"
       },
       "servicePrincipalProfile": {
-        "clientId": "0ec1b36e-fcaa-4c85-b4f0-1a2e723dfe40",
-        "secret": "c005f34b-4a86-49d0-80ca-15be4d1cb565"
+        "clientId": "24515c58-7a1a-4e6f-b663-9cce0284f849",
+        "secret": "b3ee2f4e-eaba-4d59-addd-307baba8e8ca"
       }
     }
   }

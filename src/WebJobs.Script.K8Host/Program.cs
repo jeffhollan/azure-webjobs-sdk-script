@@ -40,17 +40,21 @@ namespace WebJobs.Script.K8Host
                     var hostEnvironment = builderContext.HostingEnvironment;
 
                     // Add the registered configuration files
-                    config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                    config.AddJsonFile("appsettings.json", optional: false, 
+                        reloadOnChange: true);
 
                     var k8env = Environment.GetEnvironmentVariable("FUNCTIONS_K8CONFIG");
                     if (!String.IsNullOrEmpty(k8env) && File.Exists(k8env))
-                        config.AddJsonFile(k8env);                                        
+                        config.AddJsonFile(k8env, optional: false, 
+                            reloadOnChange: true);
+                    
                 })
                 .ConfigureLogging( (hostingContext, loggerFactory) =>
                 {
                     var loggerConfig = GetLoggerConfiguration(hostingContext);
                     Log.Logger = loggerConfig.CreateLogger();
                     loggerFactory.AddSerilog();
+                    
                 })
                 .UseDefaultServiceProvider( (context, options) =>
                 {
@@ -104,7 +108,8 @@ namespace WebJobs.Script.K8Host
             // Otherwise hard code the configuration for JSON output
             loggerConfig = loggerConfig.WriteTo.Console(new FluentDJsonFormatter(), 
                 restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Verbose);
-            
+
+            // loggerConfig.WriteTo.ApplicationInsights(iKey: "somemagickey");
             return loggerConfig;
         }
     }

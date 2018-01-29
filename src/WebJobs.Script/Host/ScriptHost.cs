@@ -377,6 +377,8 @@ namespace Microsoft.Azure.WebJobs.Script
                     // determine how to build the filtler.
                     ConfigureDefaultLoggerFactory();
                     ILogger startupErrorLogger = _hostConfig.LoggerFactory.CreateLogger(LogCategories.Startup);
+
+                    
                     startupErrorLogger.LogInformation(readingFileMessage);
 
                     throw new FormatException(string.Format("Unable to parse {0} file.", ScriptConstants.HostMetadataFileName), ex);
