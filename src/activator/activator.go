@@ -50,35 +50,35 @@ func checkRoute(r *http.Request) {
 	}
 
 	// TEMP - print out the database and collection names
-	databaseNames, _ := session.DatabaseNames()
-	for _, databaseName := range databaseNames {
-		log.Printf("Have database %s\n", databaseName)
+	// databaseNames, _ := session.DatabaseNames()
+	// for _, databaseName := range databaseNames {
+	// 	log.Printf("Have database %s\n", databaseName)
 
-		database := session.DB(databaseName)
-		collectionNames, _ := database.CollectionNames()
-		for _, collectionName := range collectionNames {
-			log.Printf("Have collection %s\n", collectionName)
+	// 	database := session.DB(databaseName)
+	// 	collectionNames, _ := database.CollectionNames()
+	// 	for _, collectionName := range collectionNames {
+	// 		log.Printf("Have collection %s\n", collectionName)
 
-			c := session.DB(databaseName).C(collectionName)
-			count, _ := c.Count()
-			log.Printf("%d documents in collection", count)
+	// 		c := session.DB(databaseName).C(collectionName)
+	// 		count, _ := c.Count()
+	// 		log.Printf("%d documents in collection", count)
 
-			var docs []bson.M
-			err = c.Find(nil).All(&docs)
-			if err != nil {
-				log.Printf("Could not collect all documents")
-			}
-			for _, doc := range docs {
-				log.Printf("Found a doc! %s\n", doc)
-			}
+	// 		var docs []bson.M
+	// 		err = c.Find(nil).All(&docs)
+	// 		if err != nil {
+	// 			log.Printf("Could not collect all documents")
+	// 		}
+	// 		for _, doc := range docs {
+	// 			log.Printf("Found a doc! %s\n", doc)
+	// 		}
 
-			//c.Find(nil).All()
-		}
-	}
+	// 		//c.Find(nil).All()
+	// 	}
+	// }
 	collection := session.DB("functions").C("routes")
 
 	// TODO - fix this bug (why 8is)
-	var routes []Route
+	var routes []bson.M
 	query := bson.M{"host": r.Host}
 	log.Printf("Querying for %s\n", query)
 
@@ -87,8 +87,14 @@ func checkRoute(r *http.Request) {
 		log.Printf("Test")
 	}
 	log.Printf("Result is %s\n", routes)
+	for _, doc := range routes {
+		log.Printf("Found a doc! %s\n", doc)
+	}
 
 	result := Route{}
+	err = collection.Find(query).One(&result)
+	log.Printf("result route is %s\n", result)
+
 	if result.host == "" {
 		log.Printf("No function host registered for %s", r.Host)
 	} else {
@@ -104,10 +110,13 @@ func deployFunctionsHost(route *Route) {
 	log.Printf("Deploying function host for %s\n", route.host)
 
 	// TODO - create a custom deployment definition
-	// https://github.com/kubernetes/client-go/blob/master/examples/create-update-delete-deployment/main.go
-
 	// TODO - create an ingress definition
+	// https://github.com/kubernetes/client-go/blob/master/examples/create-update-delete-deployment/main.go
+	//deploymentDefinition := getDeploymentDefinition(route)
+
 	// TODO - deploy
+	//deploymentsClient := clientset.AppsV1beta1().Deployments(apiv1.NamespaceDefault)
+
 	// TODO - implement directly, not with shell out to kubectl
 
 	// TODO - wait for this to come up successfully
@@ -141,6 +150,7 @@ func checkStatusInCluster(route *Route) {
 }
 
 type Route struct {
+	Id      bson.ObjectId `bson:"_id,omitempty"`
 	host    string
 	scripts string
 	//deploymentName string
