@@ -1,5 +1,15 @@
 #!/bin/bash
 
+######################################################
+# Issues:
+# - gk-deploy isn't working:
+# Creating node k8s-diskhost-16988033-0 ... Unable to create node: New Node doesn't have glusterd running
+# Creating node k8s-diskhost-16988033-1 ... Unable to create node: New Node doesn't have glusterd running
+# Creating node k8s-diskhost-16988033-2 ... Unable to create node: New Node doesn't have glusterd running
+#
+#
+######################################################
+
 set_variables() { 
     export RESOURCE_GROUP=mask8test-rg
     export KEYVAULT_NAME=mask8test-kv
@@ -99,26 +109,30 @@ deploy_shared() {
     echo "Creating service principal"
     export subid=$(az account show --query id | tr -d '"')
     az ad sp create-for-rbac --role="Contributor" \
-        --scopes="/subscriptions/$subid/resourceGroups/$RESOURCE_GROUP" > adrole.json
+        --scopes="/subscriptions/$subid" > adrole.json
     export spid=$(cat adrole.json | jq .appId | tr -d '"')
     export sppw=$(cat adrole.json | jq .password | tr -d '"')
     echo "Service principal app id = $spid"
+
+    #az login --service-principal -u NAME -p PASSWORD --tenant TENANT
+    #az vm list-sizes --location westus
 
     # Create the container registry
     echo "Creating container registry"
 
     # TODO - auth the acr to the cluster below
-    az acr create --resource-group $RESOURCE_GROUP \
-        --name $REGISTRY_NAME --sku Basic --admin-enabled true
-    registryId=$(az acr show --resource-group $RESOURCE_GROUP --name $REGISTRY_NAME \
-        --query id --output tsv)    
-     az role assignment create --scope $registryId \
-         --role Owner --assignee $spid
+    #az acr create --resource-group $RESOURCE_GROUP \
+    #    --name $REGISTRY_NAME --sku Basic --admin-enabled true
+    #registryId=$(az acr show --resource-group $RESOURCE_GROUP --name $REGISTRY_NAME \
+    #    --query id --output tsv)    
+    # az role assignment create --scope $registryId \
+    #     --role Owner --assignee $spid
 
 }
 
 deploy_monitoring_vm() {
     # Create the monitoring VM
+    echo "Deploying monitoring VM"    
     az vm create --resource-group $RESOURCE_GROUP --name $MGMT_VM_NAME \
         --location $LOCATION --image $MGMT_VM_IMAGE \
         --admin-username $MGMT_USERNAME --ssh-key-value "${SSH_KEYDATA}" \
@@ -225,8 +239,6 @@ deploy_acs_k8() {
     # TODO - label the nodes
 
     # Label the remainder of the nodes as worker nodes
-
-
 }
 
 deploy_acs_engine_k8() {
@@ -248,10 +260,35 @@ deploy_acs_engine_k8() {
     sed -i'' "s/%SP_CLIENTID%/$spid/" kubernetes-deployment.json
     sed -i'' "s/%SP_SECRET%/$sppw/" kubernetes-deployment.json    
 
-    acs-engine deploy --subscription-id $subid \
-        --location $LOCATION \
+    # Install acs-engine if not installed
+    command -v acs-engine >/dev/null 2>&1 || { 
+        wget https://github.com/Azure/acs-engine/releases/download/v0.12.4/acs-engine-v0.12.4-linux-amd64.tar.gz
+        tar xvfz acs-engine-v0.12.4-linux-amd64.tar.gz
+
+        sudo cp acs-engine-v0.12.4-linux-amd64/acs-engine /usr/local/bin/acs-engine
+
+        rm -rf acs-engine-v0.12.4-linux-amd64/
+        rm acs-engine-v0.12.4-linux-amd64.tar.gz
+    }
+
+    # Generate the deployment file and push
+    acs-engine generate kubernetes-deployment.json
+    az group deployment create \
+        --name "$K8_CLUSTER_NAME-deployment" \
         --resource-group $RESOURCE_GROUP \
-        --api-model kubernetes-deployment.json
+        --template-file "./_output/$K8_CLUSTER_NAME/azuredeploy.json" \
+        --parameters "./_output/$K8_CLUSTER_NAME/azuredeploy.parameters.json"
+
+
+    #echo "Deploying K8 cluster"
+    #acs-engine deploy --subscription-id $subid \
+    #    --location $LOCATION \
+    #    --resource-group $RESOURCE_GROUP \
+    #    --api-model kubernetes-deployment.json
+
+    # Update the route table (only for overlay networking)
+    #rt=$(az network route-table list --resource-group $RESOURCE_GROUP -o json | jq -r '.[].id')
+    #az network vnet subnet update -n KubernetesSubnet -g acs-custom-vnet --vnet-name KubernetesCustomVNET --route-table $rt
 
     # Get the kubectl configuration
     export master_fqdn=${K8_CLUSTER_NAME}.${LOCATION}.cloudapp.azure.com
@@ -259,9 +296,37 @@ deploy_acs_engine_k8() {
         $MGMT_USERNAME@$master_fqdn:.kube/config .
     export KUBECONFIG=`pwd`/config
     cp $KUBECONFIG ~/.kube/config
+
+    # Validate that the cluster came up correctly
+    ssh -i  ~/.ssh/vnettest-jumpbox $MGMT_USERNAME@$master_fqdn \
+        sudo journalctl -u kubelet | grep --text autorest
+
+    NODES=($(kubectl get nodes -l kubernetes.io/role=master -o jsonpath='{.items[*].metadata.name}'))
+    for node in "${NODES[@]}"
+    do
+        echo "Fixing etcd permission issue with certificates on $node"
+
+        echo ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
+            -o ProxyCommand="ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox -W %h:%p ${MGMT_USERNAME}@${master_fqdn}" \
+            -l ${MGMT_USERNAME} ${node} \
+            sudo chown etcd:etcd /etc/kubernetes/certs/etcdserver.key
+
+        echo ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
+            -o ProxyCommand="ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox -W %h:%p ${MGMT_USERNAME}@${master_fqdn}" \
+            -l ${MGMT_USERNAME} ${node} \
+            sudo chown etcd:etcd /etc/kubernetes/certs/etcdpeer0.key
+            
+        echo ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
+            -o ProxyCommand="ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox -W %h:%p ${MGMT_USERNAME}@${master_fqdn}" \
+            -l ${MGMT_USERNAME} ${node} \
+            sudo systemctl restart etcd
+    done
+
 }
 
 configure_k8() { 
+    echo "Configuring K8 cluster"
+
     # Create the service account and role bindings - TODO - create custom clusterrole
     kubectl create serviceaccount fluentd-es --namespace kube-system
     kubectl create clusterrolebinding fluentd-es \
@@ -278,10 +343,11 @@ configure_k8() {
 }
 
 configure_glusterfs() {    
+    echo "Configuring Gluster services"
+    
     kubectl create namespace gluster
 
     # Execute the glusterfs-client install script on each gluster agent node
-    # sudo apt install glusterfs-client
     # TODO - pdsh this
     NODES=($(kubectl get nodes  -o jsonpath='{.items[*].metadata.name}'))
     for node in "${NODES[@]}"
@@ -296,12 +362,15 @@ configure_glusterfs() {
         ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
             -o ProxyCommand="ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox -W %h:%p ${MGMT_USERNAME}@${master_fqdn}" \
             -l ${MGMT_USERNAME} ${node} \
-            "sudo modprobe dm_snapshot && sudo modprobe dm_mirror && sudo modprobe dm_thin_pool && sudo modprobe fuse"
+            "sudo modprobe dm_snapshot && sudo modprobe dm_mirror && sudo modprobe dm_thin_pool && sudo modprobe fuse"        
+
     done
 
+    # TODO - fix this.  Not always 
     DISK_NODES_IP=($(kubectl get nodes --selector=functions-role=diskhost -o jsonpath={.items[*].status.addresses[].address}))
     DISK_NODES_NAME=($(kubectl get nodes --selector=functions-role=diskhost -o jsonpath={.items[*].metadata.name}))
 
+    rm gluster-live-topology.json
     cp gluster-topology.json gluster-live-topology.json
 
     echo "Updating deployment settings in file kubernetes-deployment.json"    
@@ -320,6 +389,9 @@ configure_glusterfs() {
     scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
         ./gluster-live-topology.json ${MGMT_USERNAME}@${master_fqdn}:gluster-kubernetes/deploy/topology.json 
     
+    scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox ~/.ssh/vnettest-jumpbox \
+        ${MGMT_USERNAME}@${master_fqdn}:.ssh/id_rsa
+
     ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
         ${MGMT_USERNAME}@${master_fqdn} \
         "cd gluster-kubernetes/deploy && ./gk-deploy -y -g -n gluster "  
@@ -329,9 +401,9 @@ configure_glusterfs() {
     kubectl create -f gluster-pvc.yaml    
 }
 
+create_shared_resources() {
+    echo "Configuring shared resources"
 
-create_shared_resources()
-{
     az storage account create --resource-group $RESOURCE_GROUP \
         --name $STORAGE_NAME --location $LOCATION
     az storage share create --account-name $STORAGE_NAME \
@@ -352,7 +424,33 @@ create_shared_resources()
     rm storage-key.txt
 }
 
+get_k8_auth() {
+    echo "Installing kubectl"
+    sudo az aks install-cli
+    mkdir ~/.kube
+
+    echo "Retrieving secrets from KeyVault"
+    az keyvault secret download --vault-name ${KEYVAULT_NAME} \
+        --name jumpbox-ssh --file  ~/.ssh/vnettest-jumpbox
+    az keyvault secret download --vault-name ${KEYVAULT_NAME} \
+        --name jumpbox-ssh-pub --file  ~/.ssh/vnettest-jumpbox.pub
+    chmod 0600 ~/.ssh/vnettest-jumpbox
+    chmod 0600 ~/.ssh/vnettest-jumpbox.pub
+
+    export master_fqdn=${K8_CLUSTER_NAME}.${LOCATION}.cloudapp.azure.com
+    scp -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
+        $MGMT_USERNAME@$master_fqdn:.kube/config .
+    export KUBECONFIG=`pwd`/config
+    cp $KUBECONFIG ~/.kube/config
+
+    ssh -o StrictHostKeyChecking=no -i ~/.ssh/vnettest-jumpbox \
+        $MGMT_USERNAME@$master_fqdn    
+}
+
 main() { 
+    # TODO - there is likely a better way to do this
+    rm ~/.ssh/known_hosts
+
     set_variables
     deploy_shared
     deploy_monitoring_vm
@@ -362,6 +460,8 @@ main() {
     deploy_acs_engine_k8
 
     configure_k8
+    configure_glusterfs
+    create_shared_resources
 }
 
 main

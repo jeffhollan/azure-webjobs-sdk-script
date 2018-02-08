@@ -6,7 +6,7 @@
         "kubernetesConfig": {
           "networkPolicy": "azure"
         },
-        "orchestratorVersion": "1.8.4"
+        "orchestratorVersion": "1.9.1"
       },
       "masterProfile": {
         "count": 3,
@@ -57,11 +57,11 @@
       },
       "windowsProfile": {
         "adminUsername": "masimms",
-        "adminPassword": "naengeiSuuroor0e"
+        "adminPassword": ""
       },
       "servicePrincipalProfile": {
-        "clientId": "24515c58-7a1a-4e6f-b663-9cce0284f849",
-        "secret": "b3ee2f4e-eaba-4d59-addd-307baba8e8ca"
+        "clientId": "1f00f2a7-4f05-4092-abfa-5f5de154ff80",
+        "secret": "3b0a9b15-7c57-4f1e-8dbe-aa34bc4e2ce7"
       }
     }
   }

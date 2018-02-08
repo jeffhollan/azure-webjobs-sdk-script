@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Hosting;
+﻿-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Azure.WebJobs.Script;
 using Microsoft.Azure.WebJobs.Script.Config;
 using Microsoft.Extensions.Configuration;
