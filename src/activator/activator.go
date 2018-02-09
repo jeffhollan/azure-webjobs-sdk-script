@@ -10,9 +10,6 @@ import (
 
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
 func main() {
@@ -25,13 +22,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "URL.Path = %q\n", r.URL.Path)
 
 	// TODO check on status
-	checkRoute(r)
+	checkRoute(r, w)
 
 	// TODO - return the retry status
-
 }
 
-func checkRoute(r *http.Request) {
+func checkRoute(r *http.Request, w http.ResponseWriter) {
 	dialInfo := &mgo.DialInfo{
 		Addrs:    []string{"masfuncdeploy.documents.azure.com:10255"}, // Get HOST + PORT
 		Timeout:  60 * time.Second,
@@ -48,110 +44,40 @@ func checkRoute(r *http.Request) {
 		log.Printf("Could not connect")
 		log.Fatal(err)
 	}
-
-	// TEMP - print out the database and collection names
-	// databaseNames, _ := session.DatabaseNames()
-	// for _, databaseName := range databaseNames {
-	// 	log.Printf("Have database %s\n", databaseName)
-
-	// 	database := session.DB(databaseName)
-	// 	collectionNames, _ := database.CollectionNames()
-	// 	for _, collectionName := range collectionNames {
-	// 		log.Printf("Have collection %s\n", collectionName)
-
-	// 		c := session.DB(databaseName).C(collectionName)
-	// 		count, _ := c.Count()
-	// 		log.Printf("%d documents in collection", count)
-
-	// 		var docs []bson.M
-	// 		err = c.Find(nil).All(&docs)
-	// 		if err != nil {
-	// 			log.Printf("Could not collect all documents")
-	// 		}
-	// 		for _, doc := range docs {
-	// 			log.Printf("Found a doc! %s\n", doc)
-	// 		}
-
-	// 		//c.Find(nil).All()
-	// 	}
-	// }
 	collection := session.DB("functions").C("routes")
 
-	// TODO - fix this bug (why 8is)
-	var routes []bson.M
 	query := bson.M{"host": r.Host}
 	log.Printf("Querying for %s\n", query)
 
-	err = collection.Find(query).All(&routes)
-	if err != nil {
-		log.Printf("Test")
-	}
-	log.Printf("Result is %s\n", routes)
-	for _, doc := range routes {
-		log.Printf("Found a doc! %s\n", doc)
-	}
-
-	result := Route{}
+	var result route
 	err = collection.Find(query).One(&result)
-	log.Printf("result route is %s\n", result)
 
-	if result.host == "" {
+	if result.Host == "" {
 		log.Printf("No function host registered for %s", r.Host)
-	} else {
-		log.Printf("Function host registered for %s", result.host)
-		log.Printf("Script path is %s\n", result.scripts)
-
-		deployment := getDeploymentDefinition(&result)
-		log.Println(deployment)
+		return
 	}
-}
 
-func deployFunctionsHost(route *Route) {
-	log.Printf("Deploying function host for %s\n", route.host)
+	log.Printf("Function host registered for %s", result.Host)
+	log.Printf("Script path is %s\n", result.Scripts)
 
-	// TODO - create a custom deployment definition
-	// TODO - create an ingress definition
-	// https://github.com/kubernetes/client-go/blob/master/examples/create-update-delete-deployment/main.go
-	//deploymentDefinition := getDeploymentDefinition(route)
+	// TODO - fix this
+	result.DeploymentName = "test"
 
-	// TODO - deploy
-	//deploymentsClient := clientset.AppsV1beta1().Deployments(apiv1.NamespaceDefault)
-
-	// TODO - implement directly, not with shell out to kubectl
-
-	// TODO - wait for this to come up successfully
-
-}
-
-func waitForReady(route *Route) {
-
-}
-
-func checkStatusOutCluster(route *Route) {
-
-}
-
-func checkStatusInCluster(route *Route) {
-	// Create the in-cluster config
-	config, err := rest.InClusterConfig()
+	client, err := getClusterClient()
 	if err != nil {
-		panic(err.Error())
+		log.Printf("Could not obtain cluster client for %s", err)
+		return
 	}
 
-	// Create the clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
+	deployFunctionsHost(&result, client)
 
-	// _, err = clientset.CoreV1().Pods()
-	_, err = clientset.CoreV1().Pods("default").Get("example-xxxxx", metav1.GetOptions{})
-
+	// Redirect the HTTP call to the new service
+	// TODO
 }
 
-type Route struct {
-	Id      bson.ObjectId `bson:"_id,omitempty"`
-	host    string
-	scripts string
-	//deploymentName string
+type route struct {
+	Id             bson.ObjectId `bson:"_id,omitempty"`
+	Host           string
+	Scripts        string
+	DeploymentName string
 }

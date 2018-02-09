@@ -424,6 +424,17 @@ create_shared_resources() {
     rm storage-key.txt
 }
 
+install_ingress() { 
+    #curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get > get_helm.sh
+    #chmod 700 get_helm.sh
+    #./get_helm.sh --version v2.6.2
+
+    helm install stable/traefik --name my-release --namespace kube-system
+    #  kubectl get svc my-release-traefik --namespace kube-system -w
+
+    
+}
+
 get_k8_auth() {
     echo "Installing kubectl"
     sudo az aks install-cli
